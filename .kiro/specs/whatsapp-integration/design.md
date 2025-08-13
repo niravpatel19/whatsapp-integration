@@ -21,12 +21,12 @@ graph TB
         UI_APIKEYS[API Key Management]
         UI_WEBHOOKS[Webhook Configuration]
     end
-    
+
     subgraph "Load Balancer & CDN"
         LB[Nginx/Cloud LB]
         CDN[CDN for Static Assets]
     end
-    
+
     subgraph "Backend Services"
         API[REST API Server - Express/TypeScript]
         SOCKET[Socket.IO Server]
@@ -39,25 +39,25 @@ graph TB
         RATE_LIMITER[Rate Limiting Service]
         VALIDATOR[Request Validation Service]
     end
-    
+
     subgraph "Data Layer"
         MONGO[(MongoDB)]
         REDIS[(Redis Cache/Queue)]
     end
-    
+
     subgraph "External Services"
         WA[WhatsApp Web]
         WEBHOOK_TARGETS[External Webhook Endpoints]
         MEDIA_URLS[Media File URLs]
     end
-    
+
     subgraph "Monitoring & Logging"
         LOGS[Winston Logs]
         METRICS[Prometheus Metrics]
         TRACES[OpenTelemetry Traces]
         HEALTH[Health Checks]
     end
-    
+
     UI --> CDN
     UI --> LB
     UI_AUTH --> LB
@@ -66,10 +66,10 @@ graph TB
     UI_EVENTS --> LB
     UI_APIKEYS --> LB
     UI_WEBHOOKS --> LB
-    
+
     LB --> API
     LB --> SOCKET
-    
+
     API --> AUTH_SVC
     API --> SESSION_SVC
     API --> MESSAGE_SVC
@@ -77,29 +77,29 @@ graph TB
     API --> WEBHOOK_SVC
     API --> RATE_LIMITER
     API --> VALIDATOR
-    
+
     SOCKET --> AUTH_SVC
     SOCKET --> SESSION_SVC
     SOCKET --> EVENT_SVC
-    
+
     SESSION_SVC --> WPP_MANAGER
     MESSAGE_SVC --> WPP_MANAGER
     EVENT_SVC --> WPP_MANAGER
-    
+
     AUTH_SVC --> MONGO
     SESSION_SVC --> MONGO
     MESSAGE_SVC --> MONGO
     EVENT_SVC --> MONGO
     WEBHOOK_SVC --> MONGO
-    
+
     RATE_LIMITER --> REDIS
     SESSION_SVC --> REDIS
     AUTH_SVC --> REDIS
-    
+
     WPP_MANAGER --> WA
     WEBHOOK_SVC --> WEBHOOK_TARGETS
     MESSAGE_SVC --> MEDIA_URLS
-    
+
     API --> LOGS
     SOCKET --> LOGS
     API --> METRICS
@@ -167,24 +167,25 @@ src/
 ### API Integration Layer
 
 **HTTP Client Configuration:**
+
 ```typescript
 // services/api.ts
-import axios from 'axios'
+import axios from "axios";
 
 const api = axios.create({
   baseURL: process.env.VITE_API_BASE_URL,
   timeout: 10000,
   withCredentials: true, // For JWT cookies
-})
+});
 
 // Request interceptor for API key
 api.interceptors.request.use((config) => {
-  const apiKey = localStorage.getItem('apiKey')
+  const apiKey = localStorage.getItem("apiKey");
   if (apiKey) {
-    config.headers['x-api-key'] = apiKey
+    config.headers["x-api-key"] = apiKey;
   }
-  return config
-})
+  return config;
+});
 
 // Response interceptor for error handling
 api.interceptors.response.use(
@@ -192,42 +193,43 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Redirect to login
-      window.location.href = '/login'
+      window.location.href = "/login";
     }
-    return Promise.reject(error)
+    return Promise.reject(error);
   }
-)
+);
 ```
 
 **Socket.IO Integration:**
+
 ```typescript
 // services/socket.service.ts
-import { io, Socket } from 'socket.io-client'
+import { io, Socket } from "socket.io-client";
 
 class SocketService {
-  private socket: Socket | null = null
-  
+  private socket: Socket | null = null;
+
   connect(token: string) {
     this.socket = io(process.env.VITE_SOCKET_URL, {
       auth: { token },
-      transports: ['websocket']
-    })
-    
-    this.setupEventListeners()
+      transports: ["websocket"],
+    });
+
+    this.setupEventListeners();
   }
-  
+
   private setupEventListeners() {
-    this.socket?.on('qr:update', (data) => {
+    this.socket?.on("qr:update", (data) => {
       // Update QR code in session store
-    })
-    
-    this.socket?.on('session:state', (data) => {
+    });
+
+    this.socket?.on("session:state", (data) => {
       // Update session status in store
-    })
-    
-    this.socket?.on('message:status', (data) => {
+    });
+
+    this.socket?.on("message:status", (data) => {
       // Update message status in store
-    })
+    });
   }
 }
 ```
@@ -235,49 +237,44 @@ class SocketService {
 ### Real-time UI Updates
 
 **QR Code Component:**
+
 ```typescript
 // components/sessions/QRCodeDisplay.tsx
-import { useEffect, useState } from 'react'
-import { QRCodeSVG } from 'qrcode.react'
-import { useSocket } from '../hooks/useSocket'
+import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { useSocket } from "../hooks/useSocket";
 
 interface QRCodeDisplayProps {
-  sessionId: string
+  sessionId: string;
 }
 
 export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ sessionId }) => {
-  const [qrData, setQrData] = useState<string>('')
-  const [expiresAt, setExpiresAt] = useState<Date>()
-  const socket = useSocket()
-  
+  const [qrData, setQrData] = useState<string>("");
+  const [expiresAt, setExpiresAt] = useState<Date>();
+  const socket = useSocket();
+
   useEffect(() => {
-    socket.on('qr:update', (data) => {
+    socket.on("qr:update", (data) => {
       if (data.sessionId === sessionId) {
-        setQrData(data.qrData)
-        setExpiresAt(new Date(data.expiresAt))
+        setQrData(data.qrData);
+        setExpiresAt(new Date(data.expiresAt));
       }
-    })
-    
-    return () => socket.off('qr:update')
-  }, [sessionId, socket])
-  
+    });
+
+    return () => socket.off("qr:update");
+  }, [sessionId, socket]);
+
   return (
     <div className="qr-container">
-      {qrData && (
-        <QRCodeSVG 
-          value={qrData} 
-          size={256}
-          className="mx-auto"
-        />
-      )}
+      {qrData && <QRCodeSVG value={qrData} size={256} className="mx-auto" />}
       {expiresAt && (
         <p className="text-sm text-gray-500 mt-2">
           Expires: {expiresAt.toLocaleTimeString()}
         </p>
       )}
     </div>
-  )
-}
+  );
+};
 ```
 
 ## Components and Interfaces
@@ -287,6 +284,7 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ sessionId }) => {
 **Purpose**: Handles user authentication, JWT token management, and API key validation.
 
 **Key Methods**:
+
 - `authenticateUser(email, password)` → JWT token
 - `validateJWT(token)` → User context
 - `generateAPIKey(userId, label)` → API key
@@ -295,18 +293,19 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ sessionId }) => {
 - `validateTOTP(userId, code)` → Boolean
 
 **Interfaces**:
+
 ```typescript
 interface AuthService {
-  authenticateUser(credentials: LoginCredentials): Promise<AuthResult>
-  validateJWT(token: string): Promise<UserContext>
-  generateAPIKey(userId: string, label?: string): Promise<APIKey>
-  validateAPIKey(key: string): Promise<UserContext>
+  authenticateUser(credentials: LoginCredentials): Promise<AuthResult>;
+  validateJWT(token: string): Promise<UserContext>;
+  generateAPIKey(userId: string, label?: string): Promise<APIKey>;
+  validateAPIKey(key: string): Promise<UserContext>;
 }
 
 interface UserContext {
-  userId: string
-  email: string
-  permissions: string[]
+  userId: string;
+  email: string;
+  permissions: string[];
 }
 ```
 
@@ -315,6 +314,7 @@ interface UserContext {
 **Purpose**: Manages WhatsApp session lifecycle, WPPConnect client instances, and session state.
 
 **Key Methods**:
+
 - `createSession(userId, deviceName)` → Session
 - `deleteSession(sessionId)` → Boolean
 - `getSessionStatus(sessionId)` → SessionStatus
@@ -323,32 +323,33 @@ interface UserContext {
 - `handleConnectionChange(sessionId, status)` → void
 
 **Interfaces**:
+
 ```typescript
 interface SessionManager {
-  createSession(userId: string, deviceName?: string): Promise<Session>
-  deleteSession(sessionId: string): Promise<boolean>
-  getSession(sessionId: string): Promise<Session | null>
-  getUserSessions(userId: string): Promise<Session[]>
-  rehydrateSessions(): Promise<void>
+  createSession(userId: string, deviceName?: string): Promise<Session>;
+  deleteSession(sessionId: string): Promise<boolean>;
+  getSession(sessionId: string): Promise<Session | null>;
+  getUserSessions(userId: string): Promise<Session[]>;
+  rehydrateSessions(): Promise<void>;
 }
 
 interface Session {
-  sessionId: string
-  userId: string
-  status: SessionStatus
-  deviceInfo?: DeviceInfo
-  phone?: string
-  lastSeenAt?: Date
-  createdAt: Date
+  sessionId: string;
+  userId: string;
+  status: SessionStatus;
+  deviceInfo?: DeviceInfo;
+  phone?: string;
+  lastSeenAt?: Date;
+  createdAt: Date;
 }
 
 enum SessionStatus {
-  PENDING = 'PENDING',
-  QR = 'QR',
-  CONNECTED = 'CONNECTED',
-  DISCONNECTED = 'DISCONNECTED',
-  EXPIRED = 'EXPIRED',
-  ERROR = 'ERROR'
+  PENDING = "PENDING",
+  QR = "QR",
+  CONNECTED = "CONNECTED",
+  DISCONNECTED = "DISCONNECTED",
+  EXPIRED = "EXPIRED",
+  ERROR = "ERROR",
 }
 ```
 
@@ -357,6 +358,7 @@ enum SessionStatus {
 **Purpose**: Handles message sending, status tracking, and delivery receipts.
 
 **Key Methods**:
+
 - `sendTextMessage(sessionId, to, message)` → MessageResult
 - `sendMediaMessage(sessionId, to, mediaPayload)` → MessageResult
 - `sendLocationMessage(sessionId, to, location)` → MessageResult
@@ -364,35 +366,42 @@ enum SessionStatus {
 - `getMessageHistory(sessionId, filters)` → Message[]
 
 **Interfaces**:
+
 ```typescript
 interface MessageService {
-  sendMessage(sessionId: string, payload: MessagePayload): Promise<MessageResult>
-  getMessageStatus(messageId: string): Promise<MessageStatus>
-  getMessageHistory(sessionId: string, filters: MessageFilters): Promise<Message[]>
+  sendMessage(
+    sessionId: string,
+    payload: MessagePayload
+  ): Promise<MessageResult>;
+  getMessageStatus(messageId: string): Promise<MessageStatus>;
+  getMessageHistory(
+    sessionId: string,
+    filters: MessageFilters
+  ): Promise<Message[]>;
 }
 
 interface MessagePayload {
-  to: string
-  type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location'
-  content?: string
-  url?: string
-  caption?: string
-  latitude?: number
-  longitude?: number
+  to: string;
+  type: "text" | "image" | "document" | "audio" | "video" | "location";
+  content?: string;
+  url?: string;
+  caption?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface MessageResult {
-  messageId: string
-  status: MessageStatus
-  error?: string
+  messageId: string;
+  status: MessageStatus;
+  error?: string;
 }
 
 enum MessageStatus {
-  QUEUED = 'QUEUED',
-  SENT = 'SENT',
-  DELIVERED = 'DELIVERED',
-  READ = 'READ',
-  FAILED = 'FAILED'
+  QUEUED = "QUEUED",
+  SENT = "SENT",
+  DELIVERED = "DELIVERED",
+  READ = "READ",
+  FAILED = "FAILED",
 }
 ```
 
@@ -401,6 +410,7 @@ enum MessageStatus {
 **Purpose**: Manages event persistence, webhook delivery, and real-time notifications.
 
 **Key Methods**:
+
 - `recordEvent(event)` → void
 - `deliverWebhook(userId, event)` → void
 - `emitSocketEvent(userId, event)` → void
@@ -408,30 +418,31 @@ enum MessageStatus {
 - `retryFailedWebhooks()` → void
 
 **Interfaces**:
+
 ```typescript
 interface EventSystem {
-  recordEvent(event: SystemEvent): Promise<void>
-  deliverWebhooks(userId: string, event: SystemEvent): Promise<void>
-  emitSocketEvent(userId: string, event: SystemEvent): Promise<void>
-  getEvents(userId: string, filters: EventFilters): Promise<SystemEvent[]>
+  recordEvent(event: SystemEvent): Promise<void>;
+  deliverWebhooks(userId: string, event: SystemEvent): Promise<void>;
+  emitSocketEvent(userId: string, event: SystemEvent): Promise<void>;
+  getEvents(userId: string, filters: EventFilters): Promise<SystemEvent[]>;
 }
 
 interface SystemEvent {
-  eventId: string
-  userId: string
-  sessionId?: string
-  type: EventType
-  payload: any
-  timestamp: Date
+  eventId: string;
+  userId: string;
+  sessionId?: string;
+  type: EventType;
+  payload: any;
+  timestamp: Date;
 }
 
 enum EventType {
-  SESSION_STATE = 'SESSION_STATE',
-  MESSAGE_SENT = 'MESSAGE_SENT',
-  MESSAGE_DELIVERED = 'MESSAGE_DELIVERED',
-  MESSAGE_READ = 'MESSAGE_READ',
-  QR_REFRESHED = 'QR_REFRESHED',
-  ERROR = 'ERROR'
+  SESSION_STATE = "SESSION_STATE",
+  MESSAGE_SENT = "MESSAGE_SENT",
+  MESSAGE_DELIVERED = "MESSAGE_DELIVERED",
+  MESSAGE_READ = "MESSAGE_READ",
+  QR_REFRESHED = "QR_REFRESHED",
+  ERROR = "ERROR",
 }
 ```
 
@@ -440,6 +451,7 @@ enum EventType {
 **Purpose**: Abstracts WPPConnect library interactions and manages client lifecycle.
 
 **Key Methods**:
+
 - `initializeClient(sessionId, config)` → WPPClient
 - `destroyClient(sessionId)` → void
 - `sendMessage(sessionId, payload)` → Promise
@@ -447,24 +459,25 @@ enum EventType {
 - `getClientStatus(sessionId)` → ClientStatus
 
 **Interfaces**:
+
 ```typescript
 interface WPPConnectManager {
-  initializeClient(sessionId: string, config: WPPConfig): Promise<void>
-  destroyClient(sessionId: string): Promise<void>
-  sendMessage(sessionId: string, payload: any): Promise<any>
-  refreshQR(sessionId: string): Promise<void>
-  getClientStatus(sessionId: string): ClientStatus
+  initializeClient(sessionId: string, config: WPPConfig): Promise<void>;
+  destroyClient(sessionId: string): Promise<void>;
+  sendMessage(sessionId: string, payload: any): Promise<any>;
+  refreshQR(sessionId: string): Promise<void>;
+  getClientStatus(sessionId: string): ClientStatus;
 }
 
 interface WPPConfig {
-  session: string
-  deviceName?: string
-  headless: boolean
-  devtools: boolean
-  useChrome: boolean
-  debug: boolean
-  logQR: boolean
-  browserArgs: string[]
+  session: string;
+  deviceName?: string;
+  headless: boolean;
+  devtools: boolean;
+  useChrome: boolean;
+  debug: boolean;
+  logQR: boolean;
+  browserArgs: string[];
 }
 ```
 
@@ -473,24 +486,30 @@ interface WPPConfig {
 **Purpose**: Implements per-API-key and per-IP rate limiting with Redis backend.
 
 **Key Methods**:
+
 - `checkRateLimit(key, limit, window)` → RateLimitResult
 - `incrementCounter(key, window)` → number
 - `getRemainingRequests(key)` → number
 - `resetRateLimit(key)` → void
 
 **Interfaces**:
+
 ```typescript
 interface RateLimitService {
-  checkRateLimit(key: string, limit: number, windowMs: number): Promise<RateLimitResult>
-  incrementCounter(key: string, windowMs: number): Promise<number>
-  getRemainingRequests(key: string): Promise<number>
+  checkRateLimit(
+    key: string,
+    limit: number,
+    windowMs: number
+  ): Promise<RateLimitResult>;
+  incrementCounter(key: string, windowMs: number): Promise<number>;
+  getRemainingRequests(key: string): Promise<number>;
 }
 
 interface RateLimitResult {
-  allowed: boolean
-  remaining: number
-  resetTime: Date
-  retryAfter?: number
+  allowed: boolean;
+  remaining: number;
+  resetTime: Date;
+  retryAfter?: number;
 }
 ```
 
@@ -499,23 +518,28 @@ interface RateLimitResult {
 **Purpose**: Centralized request validation using Zod schemas.
 
 **Key Methods**:
+
 - `validateRequest(schema, data)` → ValidationResult
 - `validatePhoneNumber(phone)` → boolean
 - `validateMediaUrl(url, type)` → ValidationResult
 - `sanitizeInput(input)` → string
 
 **Interfaces**:
+
 ```typescript
 interface ValidationService {
-  validateRequest<T>(schema: ZodSchema<T>, data: unknown): ValidationResult<T>
-  validatePhoneNumber(phone: string): boolean
-  validateMediaUrl(url: string, type: MediaType): Promise<ValidationResult<MediaInfo>>
+  validateRequest<T>(schema: ZodSchema<T>, data: unknown): ValidationResult<T>;
+  validatePhoneNumber(phone: string): boolean;
+  validateMediaUrl(
+    url: string,
+    type: MediaType
+  ): Promise<ValidationResult<MediaInfo>>;
 }
 
 interface ValidationResult<T = any> {
-  success: boolean
-  data?: T
-  errors?: ValidationError[]
+  success: boolean;
+  data?: T;
+  errors?: ValidationError[];
 }
 ```
 
@@ -524,25 +548,27 @@ interface ValidationResult<T = any> {
 **Purpose**: Manages webhook delivery, retries, and HMAC signing.
 
 **Key Methods**:
+
 - `deliverWebhook(webhook, event)` → DeliveryResult
 - `retryFailedWebhooks()` → void
 - `signPayload(payload, secret)` → string
 - `validateWebhookUrl(url)` → boolean
 
 **Interfaces**:
+
 ```typescript
 interface WebhookService {
-  deliverWebhook(webhook: Webhook, event: SystemEvent): Promise<DeliveryResult>
-  retryFailedWebhooks(): Promise<void>
-  signPayload(payload: string, secret: string): string
-  validateWebhookUrl(url: string): Promise<boolean>
+  deliverWebhook(webhook: Webhook, event: SystemEvent): Promise<DeliveryResult>;
+  retryFailedWebhooks(): Promise<void>;
+  signPayload(payload: string, secret: string): string;
+  validateWebhookUrl(url: string): Promise<boolean>;
 }
 
 interface DeliveryResult {
-  success: boolean
-  statusCode?: number
-  error?: string
-  retryAfter?: number
+  success: boolean;
+  statusCode?: number;
+  error?: string;
+  retryAfter?: number;
 }
 ```
 
@@ -628,6 +654,7 @@ src/
 ### API Route Structure
 
 **Authentication Routes (`/api/v1/auth`)**:
+
 - `POST /register` - User registration
 - `POST /login` - User login
 - `POST /logout` - User logout
@@ -639,6 +666,7 @@ src/
 - `POST /2fa/verify` - Verify 2FA code
 
 **Session Routes (`/api/v1/sessions`)**:
+
 - `GET /` - List user sessions
 - `POST /` - Create new session
 - `GET /:sessionId` - Get session details
@@ -648,15 +676,18 @@ src/
 - `GET /:sessionId/events` - Get session events
 
 **Message Routes (`/api/v1/messages`)**:
+
 - `POST /send` - Send message
 - `GET /:messageId` - Get message status
 - `GET /` - Get message history (with filters)
 
 **Event Routes (`/api/v1/events`)**:
+
 - `GET /` - Get events (with filters)
 - `GET /types` - Get available event types
 
 **Webhook Routes (`/api/v1/webhooks`)**:
+
 - `GET /` - List webhooks
 - `POST /` - Create webhook
 - `PUT /:webhookId` - Update webhook
@@ -664,6 +695,7 @@ src/
 - `POST /:webhookId/test` - Test webhook delivery
 
 **API Key Routes (`/api/v1/api-keys`)**:
+
 - `GET /` - List API keys (masked)
 - `POST /` - Create API key
 - `DELETE /:keyId` - Revoke API key
@@ -671,6 +703,7 @@ src/
 ### Socket.IO Event Structure
 
 **Client → Server Events**:
+
 - `session:create` - Create new session
 - `session:delete` - Delete session
 - `session:refresh_qr` - Refresh QR code
@@ -678,6 +711,7 @@ src/
 - `events:subscribe` - Subscribe to events
 
 **Server → Client Events**:
+
 - `qr:update` - QR code updated
 - `session:state` - Session status changed
 - `message:status` - Message status updated
@@ -690,120 +724,128 @@ src/
 ### MongoDB Collections
 
 #### Users Collection
+
 ```typescript
 interface User {
-  _id: ObjectId
-  email: string // unique index
-  passwordHash: string
-  name: string
-  twoFAEnabled: boolean
-  twoFASecret?: string
-  createdAt: Date
-  updatedAt: Date
+  _id: ObjectId;
+  email: string; // unique index
+  passwordHash: string;
+  name: string;
+  twoFAEnabled: boolean;
+  twoFASecret?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
 #### API Keys Collection
+
 ```typescript
 interface APIKey {
-  _id: ObjectId
-  userId: ObjectId
-  keyHash: string // SHA-256 hash
-  keyPrefix: string // first 8 chars for display
-  label?: string
-  lastUsedAt?: Date
-  createdAt: Date
-  revokedAt?: Date
+  _id: ObjectId;
+  userId: ObjectId;
+  keyHash: string; // SHA-256 hash
+  keyPrefix: string; // first 8 chars for display
+  label?: string;
+  lastUsedAt?: Date;
+  createdAt: Date;
+  revokedAt?: Date;
 }
 ```
 
 #### Sessions Collection
+
 ```typescript
 interface SessionDocument {
-  _id: ObjectId
-  userId: ObjectId
-  sessionId: string // UUID, unique index
-  status: SessionStatus
+  _id: ObjectId;
+  userId: ObjectId;
+  sessionId: string; // UUID, unique index
+  status: SessionStatus;
   deviceInfo?: {
-    name: string
-    platform: string
-    version: string
-  }
-  phone?: string
-  lastSeenAt?: Date
-  wppState?: any // Raw WPPConnect state for debugging
-  createdAt: Date
-  updatedAt: Date
+    name: string;
+    platform: string;
+    version: string;
+  };
+  phone?: string;
+  lastSeenAt?: Date;
+  wppState?: any; // Raw WPPConnect state for debugging
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
 #### QR Events Collection
+
 ```typescript
 interface QREvent {
-  _id: ObjectId
-  userId: ObjectId
-  sessionId: string
-  qrData: string
-  expiresAt: Date
-  tries: number
-  createdAt: Date
+  _id: ObjectId;
+  userId: ObjectId;
+  sessionId: string;
+  qrData: string;
+  expiresAt: Date;
+  tries: number;
+  createdAt: Date;
 }
 // TTL index on expiresAt
 ```
 
 #### Events Collection
+
 ```typescript
 interface EventDocument {
-  _id: ObjectId
-  userId: ObjectId
-  sessionId?: string
-  type: EventType
-  payload: any
-  createdAt: Date
+  _id: ObjectId;
+  userId: ObjectId;
+  sessionId?: string;
+  type: EventType;
+  payload: any;
+  createdAt: Date;
 }
 // Compound index on userId, sessionId, createdAt
 ```
 
 #### Messages Collection
+
 ```typescript
 interface MessageDocument {
-  _id: ObjectId
-  userId: ObjectId
-  sessionId: string
-  messageId: string // unique
-  to: string
-  type: MessageType
-  content?: string
-  mediaUrl?: string
-  caption?: string
-  status: MessageStatus
-  error?: string
-  metadata?: any
-  createdAt: Date
-  updatedAt: Date
+  _id: ObjectId;
+  userId: ObjectId;
+  sessionId: string;
+  messageId: string; // unique
+  to: string;
+  type: MessageType;
+  content?: string;
+  mediaUrl?: string;
+  caption?: string;
+  status: MessageStatus;
+  error?: string;
+  metadata?: any;
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
 #### Webhooks Collection
+
 ```typescript
 interface WebhookDocument {
-  _id: ObjectId
-  userId: ObjectId
-  url: string
-  description?: string
-  secret: string // for HMAC signing
-  isActive: boolean
-  eventTypes: EventType[]
-  createdAt: Date
-  updatedAt: Date
-  lastResponseCode?: number
-  lastError?: string
+  _id: ObjectId;
+  userId: ObjectId;
+  url: string;
+  description?: string;
+  secret: string; // for HMAC signing
+  isActive: boolean;
+  eventTypes: EventType[];
+  createdAt: Date;
+  updatedAt: Date;
+  lastResponseCode?: number;
+  lastError?: string;
 }
 ```
 
 ### Redis Data Structures
 
 #### Rate Limiting
+
 ```
 Key: rate_limit:{apiKey}:{endpoint}
 Value: {count: number, resetAt: timestamp}
@@ -811,6 +853,7 @@ TTL: Based on rate limit window
 ```
 
 #### Session Cache
+
 ```
 Key: session:{sessionId}
 Value: {status, lastSeen, phone}
@@ -818,6 +861,7 @@ TTL: 1 hour
 ```
 
 #### Idempotency Keys
+
 ```
 Key: idempotency:{userId}:{key}
 Value: {messageId, response}
@@ -827,19 +871,21 @@ TTL: 24 hours
 ## Error Handling
 
 ### Error Response Format
+
 ```typescript
 interface ErrorResponse {
   error: {
-    code: string
-    message: string
-    details?: any
-    timestamp: string
-    requestId: string
-  }
+    code: string;
+    message: string;
+    details?: any;
+    timestamp: string;
+    requestId: string;
+  };
 }
 ```
 
 ### Error Codes
+
 - `UNAUTHORIZED` - Invalid credentials or token
 - `FORBIDDEN` - Access denied to resource
 - `NOT_FOUND` - Resource doesn't exist
@@ -850,6 +896,7 @@ interface ErrorResponse {
 - `INTERNAL` - Server error
 
 ### Error Handling Strategy
+
 1. **Input Validation**: Use Zod schemas for request validation
 2. **Business Logic Errors**: Custom error classes with specific codes
 3. **External Service Errors**: Wrap WPPConnect errors with context
@@ -859,6 +906,7 @@ interface ErrorResponse {
 ## Testing Strategy
 
 ### Unit Tests
+
 - **Authentication Service**: JWT generation/validation, password hashing
 - **Session Manager**: Session lifecycle, state transitions
 - **Message Service**: Message validation, status tracking
@@ -866,12 +914,14 @@ interface ErrorResponse {
 - **WPPConnect Manager**: Client lifecycle, error handling
 
 ### Integration Tests
+
 - **API Endpoints**: Full request/response cycle with test database
 - **Socket.IO Events**: Real-time event emission and reception
 - **Database Operations**: CRUD operations with proper isolation
 - **Webhook Delivery**: HTTP client mocking and retry logic
 
 ### End-to-End Tests
+
 - **User Registration/Login Flow**: Complete authentication process
 - **Session Creation**: QR generation and mock device pairing
 - **Message Sending**: Full message lifecycle with status updates
@@ -879,12 +929,14 @@ interface ErrorResponse {
 - **Admin UI Workflows**: Critical user journeys with Cypress
 
 ### Performance Tests
+
 - **Load Testing**: Concurrent API requests with k6
 - **Rate Limiting**: Verify limits are enforced correctly
 - **Database Performance**: Query optimization and indexing
 - **Memory Usage**: WPPConnect client memory management
 
 ### Security Tests
+
 - **Authentication**: Token validation, session hijacking prevention
 - **Authorization**: Multi-tenant data isolation
 - **Input Validation**: SQL injection, XSS prevention
@@ -893,24 +945,28 @@ interface ErrorResponse {
 ## Security Considerations
 
 ### Authentication & Authorization
+
 - JWT tokens with short expiration (15 minutes) and refresh tokens
 - API keys with SHA-256 hashing and prefix display only
 - TOTP-based 2FA with time window validation
 - Multi-tenant data isolation at query level
 
 ### Data Protection
+
 - Password hashing with bcrypt (12 rounds minimum)
 - Webhook HMAC signatures with SHA-256
 - Request signing for high-security endpoints
 - Audit logging for all user actions
 
 ### Network Security
+
 - HTTPS enforcement with HSTS headers
 - CORS configuration for Admin UI
 - Rate limiting per API key and IP
 - Request size limits and timeout enforcement
 
 ### Input Validation
+
 - Zod schema validation for all inputs
 - Phone number E.164 format validation
 - Media file type and size validation
@@ -919,24 +975,28 @@ interface ErrorResponse {
 ## Performance Optimizations
 
 ### Caching Strategy
+
 - Redis caching for session status and user data
 - MongoDB query result caching for read-heavy operations
 - CDN for static Admin UI assets
 - Browser caching with appropriate headers
 
 ### Database Optimization
+
 - Compound indexes for multi-field queries
 - TTL indexes for temporary data (QR events)
 - Connection pooling with appropriate limits
 - Query optimization with explain plans
 
 ### Application Performance
+
 - Connection pooling for MongoDB and Redis
 - Async/await patterns for non-blocking operations
 - Event loop monitoring and blocking operation detection
 - Memory usage monitoring for WPPConnect clients
 
 ### Scalability Patterns
+
 - Stateless API servers for horizontal scaling
 - Session affinity for Socket.IO connections
 - Database sharding by userId hash
@@ -945,30 +1005,35 @@ interface ErrorResponse {
 ## Monitoring and Observability
 
 ### Logging
+
 - Structured JSON logging with Winston
 - Log levels: ERROR, WARN, INFO, DEBUG
 - Request/response logging with correlation IDs
 - Security event logging for audit trails
 
 ### Metrics
+
 - Prometheus metrics for API performance
 - Custom metrics for WPPConnect client health
 - Database query performance metrics
 - Rate limiting and error rate metrics
 
 ### Tracing
+
 - OpenTelemetry distributed tracing
 - Request correlation across services
 - Database query tracing
 - External API call tracing
 
 ### Health Checks
+
 - Liveness probe: Basic server responsiveness
 - Readiness probe: Database and Redis connectivity
 - WPPConnect client health monitoring
 - Webhook endpoint availability checks
 
 ### Alerting
+
 - High error rates or response times
 - Database connection failures
 - WPPConnect client disconnections
@@ -980,6 +1045,7 @@ interface ErrorResponse {
 ### Docker Configuration
 
 **Frontend Dockerfile:**
+
 ```dockerfile
 FROM node:18-alpine AS builder
 WORKDIR /app
@@ -995,6 +1061,7 @@ EXPOSE 80
 ```
 
 **Backend Dockerfile:**
+
 ```dockerfile
 FROM node:18-alpine
 WORKDIR /app
@@ -1006,8 +1073,9 @@ CMD ["node", "dist/server.js"]
 ```
 
 **Docker Compose (Development):**
+
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
   frontend:
     build: ./frontend
@@ -1016,7 +1084,7 @@ services:
     environment:
       - VITE_API_BASE_URL=http://localhost:3001/api/v1
       - VITE_SOCKET_URL=http://localhost:3001
-  
+
   backend:
     build: ./backend
     ports:
@@ -1024,22 +1092,22 @@ services:
     environment:
       - NODE_ENV=development
       - MONGODB_URI=mongodb://mongo:27017/whatsapp-integration
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://redis:6369
     depends_on:
       - mongo
       - redis
-  
+
   mongo:
     image: mongo:6
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
-  
+
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "6369:6369"
     volumes:
       - redis_data:/data
 
@@ -1051,6 +1119,7 @@ volumes:
 ### Production Deployment
 
 **Kubernetes Manifests:**
+
 - Frontend: Static files served by CDN + Nginx ingress
 - Backend: Horizontal Pod Autoscaler with 2-10 replicas
 - MongoDB: StatefulSet with persistent volumes
@@ -1058,12 +1127,13 @@ volumes:
 - Ingress: SSL termination and load balancing
 
 **Environment Variables:**
+
 ```bash
 # Backend
 NODE_ENV=production
 PORT=3000
 MONGODB_URI=mongodb://mongo-cluster/whatsapp-integration
-REDIS_URL=redis://redis-cluster:6379
+REDIS_URL=redis://redis-cluster:6369
 JWT_SECRET=<secure-random-string>
 API_KEY_SALT=<secure-random-string>
 WEBHOOK_SIGNING_SECRET=<secure-random-string>
@@ -1078,132 +1148,138 @@ VITE_SOCKET_URL=https://api.example.com
 ### Frontend-Backend Communication
 
 **HTTP API Integration:**
+
 ```typescript
 // Frontend service layer
 class SessionService {
   async createSession(deviceName?: string): Promise<Session> {
-    const response = await api.post('/sessions', { deviceName })
-    return response.data
+    const response = await api.post("/sessions", { deviceName });
+    return response.data;
   }
-  
+
   async getSessions(): Promise<Session[]> {
-    const response = await api.get('/sessions')
-    return response.data
+    const response = await api.get("/sessions");
+    return response.data;
   }
-  
+
   async deleteSession(sessionId: string): Promise<void> {
-    await api.delete(`/sessions/${sessionId}`)
+    await api.delete(`/sessions/${sessionId}`);
   }
 }
 ```
 
 **Real-time Socket Integration:**
+
 ```typescript
 // Frontend socket hook
 export const useSocket = () => {
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const { token } = useAuth()
-  
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const { token } = useAuth();
+
   useEffect(() => {
     if (token) {
       const newSocket = io(SOCKET_URL, {
         auth: { token },
-        transports: ['websocket']
-      })
-      
-      setSocket(newSocket)
-      
-      return () => newSocket.close()
+        transports: ["websocket"],
+      });
+
+      setSocket(newSocket);
+
+      return () => newSocket.close();
     }
-  }, [token])
-  
-  return socket
-}
+  }, [token]);
+
+  return socket;
+};
 ```
 
 **State Management Integration:**
+
 ```typescript
 // Frontend store integration
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   loading: false,
-  
+
   fetchSessions: async () => {
-    set({ loading: true })
+    set({ loading: true });
     try {
-      const sessions = await sessionService.getSessions()
-      set({ sessions, loading: false })
+      const sessions = await sessionService.getSessions();
+      set({ sessions, loading: false });
     } catch (error) {
-      set({ loading: false })
-      throw error
+      set({ loading: false });
+      throw error;
     }
   },
-  
+
   updateSessionStatus: (sessionId: string, status: SessionStatus) => {
     set((state) => ({
-      sessions: state.sessions.map(session =>
-        session.sessionId === sessionId
-          ? { ...session, status }
-          : session
-      )
-    }))
-  }
-}))
+      sessions: state.sessions.map((session) =>
+        session.sessionId === sessionId ? { ...session, status } : session
+      ),
+    }));
+  },
+}));
 ```
 
 ### Error Handling Integration
 
 **Backend Error Middleware:**
+
 ```typescript
 export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   const errorResponse: ErrorResponse = {
     error: {
-      code: err.code || 'INTERNAL',
-      message: err.message || 'Internal server error',
+      code: err.code || "INTERNAL",
+      message: err.message || "Internal server error",
       details: err.details,
       timestamp: new Date().toISOString(),
-      requestId: req.id
-    }
-  }
-  
-  logger.error('API Error', { error: err, requestId: req.id })
-  
-  const statusCode = getStatusCodeFromError(err)
-  res.status(statusCode).json(errorResponse)
-}
+      requestId: req.id,
+    },
+  };
+
+  logger.error("API Error", { error: err, requestId: req.id });
+
+  const statusCode = getStatusCodeFromError(err);
+  res.status(statusCode).json(errorResponse);
+};
 ```
 
 **Frontend Error Handling:**
+
 ```typescript
 // Global error boundary
-export const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   return (
     <ReactErrorBoundary
       FallbackComponent={ErrorFallback}
       onError={(error, errorInfo) => {
-        logger.error('React Error', { error, errorInfo })
+        logger.error("React Error", { error, errorInfo });
       }}
     >
       {children}
     </ReactErrorBoundary>
-  )
-}
+  );
+};
 
 // API error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const errorMessage = error.response?.data?.error?.message || 'An error occurred'
-    toast.error(errorMessage)
-    
+    const errorMessage =
+      error.response?.data?.error?.message || "An error occurred";
+    toast.error(errorMessage);
+
     if (error.response?.status === 401) {
-      authStore.logout()
-      navigate('/login')
+      authStore.logout();
+      navigate("/login");
     }
-    
-    return Promise.reject(error)
+
+    return Promise.reject(error);
   }
-)
+);
 ```
 
 This comprehensive design provides a complete, integrated solution for both frontend and backend components with proper communication patterns, error handling, deployment strategies, and all necessary modules for the WhatsApp Integration service.

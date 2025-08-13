@@ -1,5 +1,5 @@
 import { createClient, RedisClientType } from 'redis';
-import { logger } from '@/utils/logger';
+import { logger } from '../utils/logger';
 
 interface RedisConfig {
   url: string;
@@ -17,10 +17,20 @@ class RedisManager {
   private isConnected = false;
 
   private getRedisConfig(): RedisConfig {
+    const redisUrl = process.env['REDIS_URL'] || 'redis://localhost:6369';
+    const redisPassword = process.env['REDIS_PASSWORD'];
+    const redisDb = parseInt(process.env['REDIS_DB'] || '0');
+    
+    logger.info('Redis configuration:', {
+      url: redisUrl.replace(/:[^:@]*@/, ':***@'), // Hide password in logs
+      password: redisPassword ? '***' : 'none',
+      db: redisDb
+    });
+    
     return {
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
-      password: process.env.REDIS_PASSWORD,
-      db: parseInt(process.env.REDIS_DB || '0'),
+      url: redisUrl,
+      password: redisPassword,
+      db: redisDb,
       retryDelayOnFailover: 100,
       maxRetriesPerRequest: 3,
       lazyConnect: true
@@ -157,7 +167,7 @@ class RedisManager {
           details: {
             connected: this.isConnected,
             uptime: process.uptime(),
-            memory: await this.client.memory('USAGE')
+            memory: 'N/A' // Redis memory info not available in this client version
           }
         };
       } else {
@@ -188,7 +198,8 @@ class RedisManager {
 
   public async get(key: string): Promise<string | null> {
     const client = this.getClient();
-    return await client.get(key);
+    const result = await client.get(key);
+    return result as string | null;
   }
 
   public async del(key: string): Promise<number> {
@@ -203,7 +214,8 @@ class RedisManager {
 
   public async expire(key: string, seconds: number): Promise<boolean> {
     const client = this.getClient();
-    return await client.expire(key, seconds);
+    const result = await client.expire(key, seconds);
+    return Boolean(result);
   }
 
   public async incr(key: string): Promise<number> {
@@ -218,7 +230,8 @@ class RedisManager {
 
   public async hGet(key: string, field: string): Promise<string | undefined> {
     const client = this.getClient();
-    return await client.hGet(key, field);
+    const result = await client.hGet(key, field);
+    return result as string | undefined;
   }
 
   public async hGetAll(key: string): Promise<Record<string, string>> {

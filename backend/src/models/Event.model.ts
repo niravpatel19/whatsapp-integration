@@ -149,17 +149,22 @@ const EventSchema = new Schema<IEvent>({
         switch (this.type) {
           case EventType.SESSION_STATE:
             return payload.newStatus !== undefined;
+          case EventType.SESSION_DELETED:
+            return payload.deletedAt !== undefined || payload.action !== undefined;
           case EventType.MESSAGE_SENT:
           case EventType.MESSAGE_DELIVERED:
           case EventType.MESSAGE_READ:
             return payload.messageId !== undefined;
           case EventType.QR_REFRESHED:
-            return payload.qrData !== undefined;
+            return payload.qrData !== undefined || payload.attempts !== undefined;
           case EventType.LOGIN:
           case EventType.LOGOUT:
             return payload.method !== undefined;
           case EventType.ERROR:
             return payload.error !== undefined;
+          case EventType.DISCONNECTED:
+          case EventType.RECONNECTED:
+            return true; // These events can have flexible payloads
           default:
             return true;
         }
@@ -375,7 +380,7 @@ EventSchema.statics.getEventAnalytics = async function(
     }
   ];
   
-  const result = await this.aggregate(pipeline);
+  const result = await this.aggregate(pipeline as any);
   const data = result[0];
   
   // Format results

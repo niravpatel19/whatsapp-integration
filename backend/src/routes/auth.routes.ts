@@ -1,42 +1,20 @@
 import { Router } from 'express';
+import { AuthController } from '../controllers/auth.controller';
+import { authenticate, requireUser } from '../middleware/auth.middleware';
+import { createRateLimiter } from '../middleware/rateLimit.middleware.stub';
+const rateLimitMiddleware = createRateLimiter;
 
 const router = Router();
 
-// Placeholder routes - will be implemented in later tasks
-router.post('/register', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Registration endpoint not yet implemented' 
-    } 
-  });
-});
+// Public routes (with rate limiting)
+router.post('/register', rateLimitMiddleware('auth', 5, 15 * 60), AuthController.register);
+router.post('/login', rateLimitMiddleware('auth', 10, 15 * 60), AuthController.login);
+router.post('/refresh', rateLimitMiddleware('auth', 20, 15 * 60), AuthController.refresh);
 
-router.post('/login', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Login endpoint not yet implemented' 
-    } 
-  });
-});
-
-router.post('/logout', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Logout endpoint not yet implemented' 
-    } 
-  });
-});
-
-router.get('/profile', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Profile endpoint not yet implemented' 
-    } 
-  });
-});
+// Protected routes
+router.post('/logout', authenticate, AuthController.logout);
+router.get('/profile', authenticate, requireUser, AuthController.getProfile);
+router.put('/profile', authenticate, requireUser, AuthController.updateProfile);
+router.post('/change-password', authenticate, requireUser, AuthController.changePassword);
 
 export default router;

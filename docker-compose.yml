@@ -29,7 +29,7 @@ services:
     container_name: whatsapp-integration-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6369:6369"
     command: redis-server --appendonly yes --requirepass redis123
     volumes:
       - redis_data:/data
@@ -54,7 +54,7 @@ services:
       NODE_ENV: development
       PORT: 3001
       MONGODB_URI: mongodb://admin:password123@mongodb:27017/whatsapp-integration?authSource=admin
-      REDIS_URL: redis://:redis123@redis:6379
+      REDIS_URL: redis://:redis123@redis:6369
       JWT_SECRET: dev-jwt-secret-change-in-production
       JWT_REFRESH_SECRET: dev-refresh-secret-change-in-production
       API_KEY_SALT: dev-api-key-salt-change-in-production

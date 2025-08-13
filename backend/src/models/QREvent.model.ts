@@ -59,10 +59,10 @@ const QREventSchema = new Schema<IQREvent>({
     validate: {
       validator: function(qrData: string) {
         // Basic QR data validation - should be a non-empty string
-        // WhatsApp QR codes typically start with specific patterns
-        return qrData.length > 0 && qrData.length <= 2048;
+        // WhatsApp QR codes are base64 encoded images and can be quite large
+        return qrData.length > 0 && qrData.length <= 50000;
       },
-      message: 'QR data must be between 1 and 2048 characters'
+      message: 'QR data must be between 1 and 50000 characters'
     }
   },
   expiresAt: {

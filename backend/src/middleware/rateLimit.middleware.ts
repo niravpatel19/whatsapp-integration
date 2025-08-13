@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import { Request, Response } from 'express';
-import { redis } from '@/config/redis';
-import { logger } from '@/utils/logger';
+import { redis } from '../config/redis';
+import { logger } from '../utils/logger';
 
 // Custom rate limit store using Redis
 class RedisStore {
@@ -89,15 +89,15 @@ const skipHealthChecks = (req: Request): boolean => {
 
 // Default rate limiter
 export const rateLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 minute
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '60'), // 60 requests per minute
+  windowMs: parseInt(process.env['RATE_LIMIT_WINDOW_MS'] || '60000'), // 1 minute
+  max: parseInt(process.env['RATE_LIMIT_MAX_REQUESTS'] || '60'), // 60 requests per minute
   message: rateLimitMessage,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
   skip: skipHealthChecks,
-  store: new RedisStore(parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000')),
-  onLimitReached: (req: Request) => {
+  // store: new RedisStore(parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000')), // Temporarily disabled
+  handler: (req: Request, res: Response) => {
     logger.warn('Rate limit exceeded', {
       key: keyGenerator(req),
       ip: req.ip,
@@ -106,6 +106,7 @@ export const rateLimiter = rateLimit({
       method: req.method,
       timestamp: new Date().toISOString()
     });
+    res.status(429).json(rateLimitMessage);
   }
 });
 
@@ -123,8 +124,8 @@ export const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => `auth:${req.ip}`,
-  store: new RedisStore(15 * 60 * 1000, 'auth:'),
-  onLimitReached: (req: Request) => {
+  // store: new RedisStore(15 * 60 * 1000, 'auth:'), // Temporarily disabled
+  handler: (req: Request, res: Response) => {
     logger.warn('Auth rate limit exceeded', {
       ip: req.ip,
       userAgent: req.get('User-Agent'),
@@ -132,13 +133,20 @@ export const authRateLimiter = rateLimit({
       method: req.method,
       timestamp: new Date().toISOString()
     });
+    res.status(429).json({
+      error: {
+        code: 'AUTH_RATE_LIMITED',
+        message: 'Too many authentication attempts, please try again later',
+        timestamp: new Date().toISOString()
+      }
+    });
   }
 });
 
 // Message sending rate limiter
 export const messageRateLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 minute
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS_PER_ENDPOINT_MESSAGES || '30'), // 30 messages per minute
+  windowMs: parseInt(process.env['RATE_LIMIT_WINDOW_MS'] || '60000'), // 1 minute
+  max: parseInt(process.env['RATE_LIMIT_MAX_REQUESTS_PER_ENDPOINT_MESSAGES'] || '30'), // 30 messages per minute
   message: {
     error: {
       code: 'MESSAGE_RATE_LIMITED',
@@ -149,21 +157,28 @@ export const messageRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
-  store: new RedisStore(parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), 'msg:'),
-  onLimitReached: (req: Request) => {
+  // store: new RedisStore(parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), 'msg:'), // Temporarily disabled
+  handler: (req: Request, res: Response) => {
     logger.warn('Message rate limit exceeded', {
       key: keyGenerator(req),
       ip: req.ip,
       userAgent: req.get('User-Agent'),
       timestamp: new Date().toISOString()
     });
+    res.status(429).json({
+      error: {
+        code: 'MESSAGE_RATE_LIMITED',
+        message: 'Too many messages sent, please slow down',
+        timestamp: new Date().toISOString()
+      }
+    });
   }
 });
 
 // Session management rate limiter
 export const sessionRateLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 minute
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS_PER_ENDPOINT_SESSIONS || '10'), // 10 session operations per minute
+  windowMs: parseInt(process.env['RATE_LIMIT_WINDOW_MS'] || '60000'), // 1 minute
+  max: parseInt(process.env['RATE_LIMIT_MAX_REQUESTS_PER_ENDPOINT_SESSIONS'] || '10'), // 10 session operations per minute
   message: {
     error: {
       code: 'SESSION_RATE_LIMITED',
@@ -174,13 +189,62 @@ export const sessionRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator,
-  store: new RedisStore(parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), 'session:'),
-  onLimitReached: (req: Request) => {
+  // store: new RedisStore(parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), 'session:'), // Temporarily disabled
+  handler: (req: Request, res: Response) => {
     logger.warn('Session rate limit exceeded', {
       key: keyGenerator(req),
       ip: req.ip,
       userAgent: req.get('User-Agent'),
       timestamp: new Date().toISOString()
     });
+    res.status(429).json({
+      error: {
+        code: 'SESSION_RATE_LIMITED',
+        message: 'Too many session operations, please slow down',
+        timestamp: new Date().toISOString()
+      }
+    });
   }
 });
+
+// Flexible rate limit middleware factory
+export const rateLimitMiddleware = (
+  type: string,
+  maxRequests: number,
+  windowSeconds: number
+) => {
+  const windowMs = windowSeconds * 1000;
+  
+  return rateLimit({
+    windowMs,
+    max: maxRequests,
+    message: {
+      error: {
+        code: 'RATE_LIMITED',
+        message: `Too many ${type} requests, please try again later`,
+        timestamp: new Date().toISOString()
+      }
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request) => `${type}:${keyGenerator(req)}`,
+    // store: new RedisStore(windowMs, `${type}:`), // Temporarily disabled
+    handler: (req: Request, res: Response) => {
+      logger.warn(`${type} rate limit exceeded`, {
+        key: keyGenerator(req),
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+        path: req.path,
+        method: req.method,
+        timestamp: new Date().toISOString()
+      });
+      res.status(429).json({
+        error: {
+          code: 'RATE_LIMITED',
+          message: `Too many ${type} requests, please try again later`,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+  });
+};

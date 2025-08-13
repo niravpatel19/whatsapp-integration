@@ -1,42 +1,43 @@
 import { Router } from 'express';
+import { SessionsController } from '../controllers/sessions.controller';
+import { authenticate, requireUser } from '../middleware/auth.middleware';
+import { createRateLimiter } from '../middleware/rateLimit.middleware.stub';
+const rateLimitMiddleware = createRateLimiter;
 
 const router = Router();
 
-// Placeholder routes - will be implemented in later tasks
-router.get('/', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Sessions list endpoint not yet implemented' 
-    } 
-  });
-});
+// All session routes require authentication
+router.use(authenticate);
+router.use(requireUser);
 
-router.post('/', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Create session endpoint not yet implemented' 
-    } 
-  });
-});
+// Get all sessions for user
+router.get('/', SessionsController.getSessions);
 
-router.get('/:sessionId', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Get session endpoint not yet implemented' 
-    } 
-  });
-});
+// Create new session (rate limited)
+router.post('/', rateLimitMiddleware('session-create', 5, 60 * 60), SessionsController.createSession);
 
-router.delete('/:sessionId', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Delete session endpoint not yet implemented' 
-    } 
-  });
-});
+// Get specific session details
+router.get('/:sessionId', SessionsController.getSession);
+
+// Update session configuration
+router.put('/:sessionId', SessionsController.updateSession);
+
+// Delete session
+router.delete('/:sessionId', SessionsController.deleteSession);
+
+// Refresh QR code (rate limited)
+router.post('/:sessionId/refresh-qr', rateLimitMiddleware('qr-refresh', 10, 60 * 60), SessionsController.refreshQR);
+
+// Get current QR code
+router.get('/:sessionId/qr', SessionsController.getQR);
+
+// Get session events
+router.get('/:sessionId/events', SessionsController.getSessionEvents);
+
+// Force session reconnection (rate limited)
+router.post('/:sessionId/reconnect', rateLimitMiddleware('session-reconnect', 3, 60 * 60), SessionsController.reconnectSession);
+
+// Get session statistics
+router.get('/:sessionId/stats', SessionsController.getSessionStats);
 
 export default router;

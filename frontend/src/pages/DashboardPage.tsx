@@ -1,49 +1,33 @@
 import React from 'react';
-import { Layout, Card, Row, Col, Statistic, Typography, Button, Space } from 'antd';
+import { Layout, Card, Row, Col, Statistic, Typography, Button, Space, Spin, Alert } from 'antd';
 import { 
   MessageOutlined, 
   PhoneOutlined, 
   CheckCircleOutlined, 
   ClockCircleOutlined,
   PlusOutlined,
-  SettingOutlined
+  SettingOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { useDashboard } from '../hooks/useDashboard';
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const { data, loading, error, refresh } = useDashboard();
 
-  // Mock data - will be replaced with real data from API
-  const stats = {
-    totalSessions: 3,
-    activeSessions: 2,
-    totalMessages: 156,
-    messagesThisMonth: 89,
+  // Use real data from API or fallback to defaults
+  const stats = data?.stats || {
+    totalSessions: 0,
+    activeSessions: 0,
+    totalMessages: 0,
+    messagesThisMonth: 0,
   };
 
-  const recentActivity = [
-    {
-      id: 1,
-      type: 'session_connected',
-      message: 'Session "My Phone" connected successfully',
-      timestamp: '2 minutes ago',
-    },
-    {
-      id: 2,
-      type: 'message_sent',
-      message: 'Message sent to +1234567890',
-      timestamp: '5 minutes ago',
-    },
-    {
-      id: 3,
-      type: 'session_created',
-      message: 'New session "Work Phone" created',
-      timestamp: '1 hour ago',
-    },
-  ];
+  const recentActivity = data?.recentActivity || [];
 
   return (
     <Layout className="min-h-screen">
@@ -76,6 +60,32 @@ const DashboardPage: React.FC = () => {
       </Header>
 
       <Content className="p-6">
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center items-center py-12">
+            <Spin size="large" />
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <Alert
+            message="Failed to load dashboard data"
+            description={error}
+            type="error"
+            showIcon
+            className="mb-6"
+            action={
+              <Button size="small" onClick={refresh} icon={<ReloadOutlined />}>
+                Retry
+              </Button>
+            }
+          />
+        )}
+
+        {/* Dashboard Content */}
+        {!loading && !error && (
+          <>
         {/* Statistics Cards */}
         <Row gutter={[16, 16]} className="mb-6">
           <Col xs={24} sm={12} lg={6}>
@@ -219,6 +229,8 @@ const DashboardPage: React.FC = () => {
             </Col>
           </Row>
         </Card>
+          </>
+        )}
       </Content>
     </Layout>
   );

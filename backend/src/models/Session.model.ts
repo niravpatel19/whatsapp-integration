@@ -36,6 +36,7 @@ export interface ISessionModel extends Model<ISession> {
   createSession(userId: string, deviceName?: string): Promise<ISession>;
   getUserSessions(userId: string, includeExpired?: boolean): Promise<ISession[]>;
   getSessionBySessionId(sessionId: string, userId: string): Promise<ISession | null>;
+  updateStatus(sessionId: string, newStatus: SessionStatus, error?: string): Promise<ISession | null>;
   expireSession(sessionId: string, userId: string): Promise<ISession | null>;
   cleanupExpiredSessions(): Promise<number>;
   getSessionStatistics(userId: string): Promise<{
@@ -306,6 +307,20 @@ SessionSchema.statics.getSessionBySessionId = async function(
     sessionId,
     userId: new Types.ObjectId(userId)
   });
+};
+
+SessionSchema.statics.updateStatus = async function(
+  sessionId: string,
+  newStatus: SessionStatus,
+  error?: string
+): Promise<ISession | null> {
+  const session = await this.findOne({ sessionId });
+  if (!session) {
+    return null;
+  }
+  
+  await session.updateStatus(newStatus, error);
+  return session;
 };
 
 SessionSchema.statics.expireSession = async function(

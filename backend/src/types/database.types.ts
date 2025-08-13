@@ -53,6 +53,7 @@ export enum MessageStatus {
 // Event related types
 export enum EventType {
   SESSION_STATE = 'SESSION_STATE',
+  SESSION_DELETED = 'SESSION_DELETED',
   MESSAGE_SENT = 'MESSAGE_SENT',
   MESSAGE_DELIVERED = 'MESSAGE_DELIVERED',
   MESSAGE_READ = 'MESSAGE_READ',

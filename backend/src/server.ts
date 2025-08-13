@@ -1,84 +1,79 @@
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import dotenv from 'dotenv';
+import path from 'path';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables from the backend directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-import { connectDatabase } from '@/config/database';
-import { connectRedis } from '@/config/redis';
-import { logger } from '@/utils/logger';
-import { errorHandler } from '@/middleware/error.middleware';
-import { notFoundHandler } from '@/middleware/notFound.middleware';
-import { requestLogger } from '@/middleware/logging.middleware';
-import { rateLimiter } from '@/middleware/rateLimit.middleware';
-import { setupSocketIO } from '@/socket/server';
-import { WPPConnectManager } from '@/wpp/manager';
+import { connectDatabase } from './config/database';
+import { connectRedis } from './config/redis';
+import { logger } from './utils/logger';
+import { errorHandler } from './middleware/error.middleware';
+import { notFoundHandler } from './middleware/notFound.middleware';
+import { requestLogger } from './middleware/logging.middleware';
+import { rateLimiter } from './middleware/rateLimit.middleware.stub';
+import { SecurityMiddleware } from './middleware/security.middleware';
+import { setupSocketIO } from './socket/server';
+import { WPPConnectManager } from './wpp/manager.factory';
+import { socketIOService } from './services/socketio.service';
 
 // Import routes
-import authRoutes from '@/routes/auth.routes';
-import sessionRoutes from '@/routes/sessions.routes';
-import messageRoutes from '@/routes/messages.routes';
-import webhookRoutes from '@/routes/webhooks.routes';
-import eventRoutes from '@/routes/events.routes';
-import healthRoutes from '@/routes/health.routes';
+import authRoutes from './routes/auth.routes';
+import twofaRoutes from './routes/twofa.routes';
+import apikeyRoutes from './routes/apikey.routes';
+import sessionRoutes from './routes/sessions.routes';
+import messageRoutes from './routes/messages.routes';
+import webhookRoutes from './routes/webhooks.routes';
+import eventRoutes from './routes/events.routes';
+import healthRoutes from './routes/health.routes';
 
 class Application {
   public app: express.Application;
   public server: any;
   public io: SocketIOServer;
-  private wppManager: WPPConnectManager;
+  // private wppManager: WPPConnectManager; // Temporarily disabled
 
   constructor() {
     this.app = express();
     this.server = createServer(this.app);
     this.io = new SocketIOServer(this.server, {
       cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        origin: process.env['FRONTEND_URL'] || 'http://localhost:3000',
         methods: ['GET', 'POST'],
-        credentials: true
+        credentials: true,
       },
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
     });
-    this.wppManager = new WPPConnectManager();
-    
+    // this.wppManager = WPPConnectManager.getInstance(); // Temporarily disabled
+
     this.initializeMiddleware();
     this.initializeRoutes();
     this.initializeErrorHandling();
   }
 
   private initializeMiddleware(): void {
-    // Security middleware
-    this.app.use(helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'"],
-          imgSrc: ["'self'", "data:", "https:"],
-          connectSrc: ["'self'", "ws:", "wss:"],
-          fontSrc: ["'self'"],
-          objectSrc: ["'none'"],
-          mediaSrc: ["'self'"],
-          frameSrc: ["'none'"],
-        },
-      },
-      crossOriginEmbedderPolicy: false
-    }));
+    // Security headers
+    this.app.use(SecurityMiddleware.securityHeaders());
 
-    // CORS configuration
-    this.app.use(cors({
-      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-signature', 'x-timestamp', 'Idempotency-Key']
-    }));
+    // IP filtering and blocking
+    this.app.use(SecurityMiddleware.ipFilter());
+
+    // Request timeout
+    this.app.use(SecurityMiddleware.requestTimeout(30000)); // 30 seconds
+
+    // Request size limiting
+    this.app.use(SecurityMiddleware.requestSizeLimit('1mb'));
+
+    // Security event logging
+    this.app.use(SecurityMiddleware.securityEventLogger());
+
+    // CORS configuration (using custom middleware)
+    this.app.use(SecurityMiddleware.corsMiddleware());
 
     // Compression and parsing
     this.app.use(compression());
@@ -87,11 +82,13 @@ class Application {
     this.app.use(cookieParser());
 
     // Logging
-    this.app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
+    this.app.use(
+      morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } })
+    );
     this.app.use(requestLogger);
 
-    // Rate limiting
-    this.app.use(rateLimiter);
+    // Rate limiting - temporarily disabled
+    // this.app.use(rateLimiter);
   }
 
   private initializeRoutes(): void {
@@ -101,13 +98,15 @@ class Application {
 
     // API routes
     this.app.use('/api/v1/auth', authRoutes);
+    this.app.use('/api/v1/auth/2fa', twofaRoutes);
+    this.app.use('/api/v1/api-keys', apikeyRoutes);
     this.app.use('/api/v1/sessions', sessionRoutes);
     this.app.use('/api/v1/messages', messageRoutes);
     this.app.use('/api/v1/webhooks', webhookRoutes);
     this.app.use('/api/v1/events', eventRoutes);
 
     // API documentation
-    this.app.get('/api/docs', (req, res) => {
+    this.app.get('/api/docs', (_req, res) => {
       res.json({
         message: 'WhatsApp Integration API Documentation',
         version: '1.0.0',
@@ -116,19 +115,19 @@ class Application {
           sessions: '/api/v1/sessions',
           messages: '/api/v1/messages',
           webhooks: '/api/v1/webhooks',
-          events: '/api/v1/events'
+          events: '/api/v1/events',
         },
-        documentation: 'https://github.com/your-repo/whatsapp-integration/docs'
+        documentation: 'https://github.com/your-repo/whatsapp-integration/docs',
       });
     });
 
     // Root endpoint
-    this.app.get('/', (req, res) => {
+    this.app.get('/', (_req, res) => {
       res.json({
         message: 'WhatsApp Integration API',
         version: '1.0.0',
         status: 'running',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     });
   }
@@ -142,28 +141,38 @@ class Application {
     try {
       // Connect to databases
       await connectDatabase();
-      await connectRedis();
+      
+      // Try to connect to Redis (optional for development)
+      try {
+        await connectRedis();
+        logger.info('✅ Redis connected successfully');
+      } catch (error) {
+        logger.warn('⚠️ Redis connection failed, continuing without Redis:', error);
+        logger.warn('⚠️ Some features may be limited without Redis (rate limiting, caching, etc.)');
+      }
 
-      // Initialize WPPConnect manager
-      await this.wppManager.initialize();
+      // Initialize WPPConnect manager - temporarily disabled for testing
+      // await this.wppManager.initialize();
 
-      // Setup Socket.IO
-      setupSocketIO(this.io, this.wppManager);
+      // Register Socket.IO instance with service
+      socketIOService.setServer(this.io);
+
+      // Setup Socket.IO with WPPConnect manager
+      setupSocketIO(this.io);
 
       // Start server
-      const port = process.env.PORT || 3001;
-      const host = process.env.HOST || 'localhost';
+      const port = process.env['PORT'] || 3001;
+      const host = process.env['HOST'] || 'localhost';
 
       this.server.listen(port, host, () => {
         logger.info(`🚀 Server running on http://${host}:${port}`);
         logger.info(`📚 API Documentation: http://${host}:${port}/api/docs`);
         logger.info(`🔍 Health Check: http://${host}:${port}/health`);
-        logger.info(`🌐 Environment: ${process.env.NODE_ENV}`);
+        logger.info(`🌐 Environment: ${process.env['NODE_ENV']}`);
       });
 
       // Graceful shutdown
       this.setupGracefulShutdown();
-
     } catch (error) {
       logger.error('Failed to start server:', error);
       process.exit(1);
@@ -185,8 +194,8 @@ class Application {
           logger.info('Socket.IO server closed');
         });
 
-        // Close WPPConnect clients
-        await this.wppManager.shutdown();
+        // Close WPPConnect clients - temporarily disabled
+        // await this.wppManager.shutdown();
 
         // Close database connections
         // MongoDB and Redis connections will be closed by their respective modules

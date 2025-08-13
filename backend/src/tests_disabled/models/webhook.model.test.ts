@@ -20,7 +20,7 @@ describe('Webhook Model', () => {
       name: 'Test User'
     });
     await testUser.save();
-    testUserId = testUser._id;
+    testUserId = testUser._id as any;
   });
 
   afterAll(async () => {

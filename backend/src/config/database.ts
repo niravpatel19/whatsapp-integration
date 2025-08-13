@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { logger } from '@/utils/logger';
+import { logger } from '../utils/logger';
 
 interface DatabaseConfig {
   uri: string;
@@ -7,17 +7,16 @@ interface DatabaseConfig {
 }
 
 const getDatabaseConfig = (): DatabaseConfig => {
-  const uri = process.env.NODE_ENV === 'test' 
-    ? process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/whatsapp-integration-test'
-    : process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsapp-integration';
+  const uri = process.env['NODE_ENV'] === 'test' 
+    ? process.env['MONGODB_TEST_URI'] || 'mongodb://localhost:27017/whatsapp-integration-test'
+    : process.env['MONGODB_URI'] || 'mongodb://localhost:27017/whatsapp-integration';
 
   const options: mongoose.ConnectOptions = {
-    minPoolSize: parseInt(process.env.DB_CONNECTION_POOL_MIN || '5'),
-    maxPoolSize: parseInt(process.env.DB_CONNECTION_POOL_MAX || '20'),
+    minPoolSize: parseInt(process.env['DB_CONNECTION_POOL_MIN'] || '5'),
+    maxPoolSize: parseInt(process.env['DB_CONNECTION_POOL_MAX'] || '20'),
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
     bufferCommands: false,
-    bufferMaxEntries: 0,
   };
 
   return { uri, options };
@@ -92,7 +91,7 @@ export const getDatabaseHealth = async (): Promise<{ status: string; details: an
 
     if (state === 1) {
       // Test database operation
-      await mongoose.connection.db.admin().ping();
+      await mongoose.connection.db?.admin().ping();
       
       return {
         status: 'healthy',

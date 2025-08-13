@@ -45,7 +45,9 @@ export interface IMessageModel extends Model<IMessage> {
     mediaUrl?: string;
     caption?: string;
     metadata?: any;
+    idempotencyKey?: string;
   }): Promise<IMessage>;
+  updateStatus(messageId: string, newStatus: MessageStatus, error?: string): Promise<IMessage | null>;
   getMessageHistory(
     userId: string,
     filters?: {
@@ -486,6 +488,18 @@ MessageSchema.statics.getMessagesForRetry = async function(): Promise<IMessage[]
       { nextRetryAt: { $lte: new Date() } }
     ]
   }).limit(100); // Process max 100 retries at a time
+};
+
+MessageSchema.statics.updateStatus = async function(
+  messageId: string,
+  newStatus: MessageStatus,
+  error?: string
+): Promise<IMessage | null> {
+  const message = await this.findOne({ messageId });
+  if (!message) return null;
+  
+  await message.updateStatus(newStatus, error);
+  return message;
 };
 
 MessageSchema.statics.updateMessageStatus = async function(

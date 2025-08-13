@@ -43,6 +43,7 @@ export interface IAPIKeyModel extends Model<IAPIKey> {
     createdAt: Date;
     isActive: boolean;
   }>;
+  updateLastUsed(keyId: string): Promise<void>;
 }
 
 // API Key schema definition
@@ -230,7 +231,7 @@ APIKeySchema.statics.rotateAPIKey = async function(
   }
   
   // Generate new key with same permissions and label
-  const { apiKey: newKey, rawKey } = await this.generateAPIKey(userId, {
+  const { apiKey: newKey, rawKey } = await (this as any).generateAPIKey(userId, {
     label: oldKey.label,
     permissions: oldKey.permissions
   });
@@ -285,6 +286,13 @@ APIKeySchema.statics.getUsageStatistics = async function(
     createdAt: apiKey.createdAt,
     isActive: !apiKey.revokedAt
   };
+};
+
+APIKeySchema.statics.updateLastUsed = async function(keyId: string): Promise<void> {
+  await this.findByIdAndUpdate(keyId, {
+    $set: { lastUsedAt: new Date() },
+    $inc: { usageCount: 1 }
+  });
 };
 
 // Pre-save middleware

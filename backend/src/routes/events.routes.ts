@@ -1,33 +1,17 @@
 import { Router } from 'express';
+import { EventsController } from '../controllers/events.controller';
+import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// Placeholder routes - will be implemented in later tasks
-router.get('/', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Events list endpoint not yet implemented' 
-    } 
-  });
-});
+// Apply authentication middleware to all routes
+router.use(authenticate);
 
-router.get('/types', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Event types endpoint not yet implemented' 
-    } 
-  });
-});
-
-router.get('/stats', (req, res) => {
-  res.status(501).json({ 
-    error: { 
-      code: 'NOT_IMPLEMENTED', 
-      message: 'Event stats endpoint not yet implemented' 
-    } 
-  });
-});
+// Events routes
+router.get('/', EventsController.getEvents);
+router.get('/types', EventsController.getEventTypes);
+router.get('/stats', EventsController.getEventStats);
+router.get('/session/:sessionId', EventsController.getSessionEvents);
+router.get('/type/:type', EventsController.getEventsByType);
 
 export default router;
