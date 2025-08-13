@@ -1,0 +1,208 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  
+  * {
+    @apply border-gray-200;
+  }
+}
+
+/* Component styles */
+@layer components {
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium py-2 px-4 rounded-md transition-colors duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+  }
+  
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  }
+  
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .status-connected {
+    @apply bg-success-100 text-success-800;
+  }
+  
+  .status-disconnected {
+    @apply bg-error-100 text-error-800;
+  }
+  
+  .status-pending {
+    @apply bg-warning-100 text-warning-800;
+  }
+  
+  .status-qr {
+    @apply bg-primary-100 text-primary-800;
+  }
+  
+  .loading-spinner {
+    @apply animate-spin rounded-full h-4 w-4 border-b-2 border-current;
+  }
+}
+
+/* Utility styles */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .gradient-bg {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+  
+  .glass-effect {
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.8);
+  }
+}
+
+/* Ant Design customizations */
+.ant-layout {
+  background: #f9fafb !important;
+}
+
+.ant-layout-sider {
+  background: #ffffff !important;
+  border-right: 1px solid #e5e7eb !important;
+}
+
+.ant-menu {
+  background: transparent !important;
+  border: none !important;
+}
+
+.ant-menu-item {
+  border-radius: 6px !important;
+  margin: 4px 0 !important;
+}
+
+.ant-menu-item-selected {
+  background-color: #eff6ff !important;
+  color: #0ea5e9 !important;
+}
+
+.ant-menu-item:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.ant-table {
+  background: #ffffff !important;
+}
+
+.ant-table-thead > tr > th {
+  background: #f9fafb !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  font-weight: 600 !important;
+}
+
+.ant-card {
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06) !important;
+}
+
+.ant-btn-primary {
+  background: #0ea5e9 !important;
+  border-color: #0ea5e9 !important;
+}
+
+.ant-btn-primary:hover {
+  background: #0284c7 !important;
+  border-color: #0284c7 !important;
+}
+
+/* QR Code container */
+.qr-container {
+  @apply flex flex-col items-center justify-center p-6 bg-white rounded-lg border-2 border-dashed border-gray-300;
+}
+
+.qr-container.active {
+  @apply border-primary-300 bg-primary-50;
+}
+
+/* Message status indicators */
+.message-status {
+  @apply flex items-center space-x-1 text-sm;
+}
+
+.message-status.queued {
+  @apply text-gray-500;
+}
+
+.message-status.sent {
+  @apply text-blue-500;
+}
+
+.message-status.delivered {
+  @apply text-green-500;
+}
+
+.message-status.read {
+  @apply text-green-600;
+}
+
+.message-status.failed {
+  @apply text-red-500;
+}
+
+/* Animation classes */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.pulse-slow {
+  animation: pulse 3s infinite;
+}
+
+/* Responsive utilities */
+@media (max-width: 640px) {
+  .mobile-hidden {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .tablet-hidden {
+    display: none !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
