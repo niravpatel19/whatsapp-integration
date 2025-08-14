@@ -19,6 +19,7 @@ import {
   Divider,
   Alert,
   Spin,
+
 } from 'antd';
 import {
   KeyOutlined,
@@ -39,7 +40,7 @@ const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
 interface APIKey {
-  _id: string;
+  id: string;
   keyPrefix: string;
   label: string;
   permissions: string[];
@@ -53,6 +54,8 @@ const ProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
+  const [revealedKeys, setRevealedKeys] = useState<{[keyId: string]: string}>({});
+  const [revealingKeys, setRevealingKeys] = useState<{[keyId: string]: boolean}>({});
   const [form] = Form.useForm();
 
   // Fetch API keys
@@ -81,7 +84,7 @@ const ProfilePage: React.FC = () => {
         permissions: ['sessions:read', 'sessions:write', 'messages:send', 'messages:read'],
       });
 
-      setNewApiKey(response.data.data.apiKey.key);
+      setNewApiKey(response.data.data.rawKey);
       setCreateModalVisible(false);
       form.resetFields();
       fetchApiKeys();
@@ -108,6 +111,45 @@ const ProfilePage: React.FC = () => {
     message.success('Copied to clipboard');
   };
 
+  // Reveal API key
+  const handleRevealApiKey = async (keyId: string) => {
+    if (revealedKeys[keyId]) {
+      // Key is already revealed, just toggle visibility
+      return;
+    }
+
+    setRevealingKeys(prev => ({ ...prev, [keyId]: true }));
+    try {
+      const response = await api.get(`/api-keys/${keyId}/reveal`);
+      if (response.data.success) {
+        setRevealedKeys(prev => ({ ...prev, [keyId]: response.data.data.key }));
+      } else {
+        message.error('Failed to retrieve full API key');
+      }
+    } catch (error: any) {
+      if (error.response?.data?.error?.code === 'LEGACY_API_KEY') {
+        message.warning({
+          content: 'This API key was created before the reveal feature was available. Please create a new API key to use the reveal functionality.',
+          duration: 6,
+        });
+      } else {
+        message.error('Failed to retrieve full API key');
+      }
+    } finally {
+      setRevealingKeys(prev => ({ ...prev, [keyId]: false }));
+    }
+  };
+
+  // Copy revealed API key
+  const handleCopyRevealedKey = (keyId: string) => {
+    const fullKey = revealedKeys[keyId];
+    if (fullKey) {
+      copyToClipboard(fullKey);
+    } else {
+      message.warning('Please reveal the full key first');
+    }
+  };
+
   const apiKeyColumns = [
     {
       title: 'Label',
@@ -115,10 +157,54 @@ const ProfilePage: React.FC = () => {
       key: 'label',
     },
     {
-      title: 'Key Preview',
+      title: 'API Key',
       dataIndex: 'keyPrefix',
       key: 'keyPrefix',
-      render: (prefix: string) => <Text code>{prefix}...****</Text>,
+      render: (prefix: string, record: APIKey) => {
+        const isRevealed = !!revealedKeys[record.id];
+        const isRevealing = !!revealingKeys[record.id];
+        const fullKey = revealedKeys[record.id];
+
+        return (
+          <div>
+            <Text code style={{ fontFamily: 'monospace' }}>
+              {isRevealed ? fullKey : `${prefix}...****`}
+            </Text>
+            <div style={{ marginTop: 4 }}>
+              <Space size="small">
+                <Button
+                  type="link"
+                  size="small"
+                  loading={isRevealing}
+                  icon={isRevealed ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                  onClick={() => {
+                    if (isRevealed) {
+                      // Hide the key by removing it from revealed keys
+                      setRevealedKeys(prev => {
+                        const newKeys = { ...prev };
+                        delete newKeys[record.id];
+                        return newKeys;
+                      });
+                    } else {
+                      handleRevealApiKey(record.id);
+                    }
+                  }}
+                >
+                  {isRevealed ? 'Hide' : 'Show'}
+                </Button>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => handleCopyRevealedKey(record.id)}
+                >
+                  Copy
+                </Button>
+              </Space>
+            </div>
+          </div>
+        );
+      },
     },
     {
       title: 'Permissions',
@@ -153,7 +239,7 @@ const ProfilePage: React.FC = () => {
         <Space>
           <Popconfirm
             title="Are you sure you want to delete this API key?"
-            onConfirm={() => handleDeleteApiKey(record._id)}
+            onConfirm={() => handleDeleteApiKey(record.id)}
             okText="Yes"
             cancelText="No"
           >
@@ -283,7 +369,7 @@ const ProfilePage: React.FC = () => {
                 <Table
                   columns={apiKeyColumns}
                   dataSource={apiKeys}
-                  rowKey="_id"
+                  rowKey="id"
                   pagination={false}
                   locale={{
                     emptyText: 'No API keys created yet',
@@ -408,9 +494,9 @@ const ProfilePage: React.FC = () => {
           ]}
         >
           <Alert
-            message="Save this API key now"
-            description="This is the only time you'll be able to see the full API key. Make sure to copy and store it securely."
-            type="warning"
+            message="Save this API key securely"
+            description="Make sure to copy and store this API key securely. You can reveal it again later if needed."
+            type="info"
             showIcon
             className="mb-4"
           />

@@ -99,7 +99,7 @@ export class MessagesController {
       const messageData = validation.data;
       const idempotencyKey = req.headers['idempotency-key'] as string;
 
-      // Check idempotency
+      // Check idempotency - we'll validate userId later, so use API key user for now
       if (idempotencyKey) {
         const existingMessage = await Message.findOne({
           userId: req.user!.userId,
@@ -123,10 +123,9 @@ export class MessagesController {
         }
       }
 
-      // Validate session
+      // Validate session - use sessionId directly without user filtering
       const session = await Session.findOne({
         sessionId: messageData.sessionId,
-        userId: req.user!.userId,
       });
 
       if (!session) {
@@ -174,9 +173,39 @@ export class MessagesController {
         }
       }
 
+      // Use the session's userId for message ownership (session owner should own the message)
+      // But validate it's a proper ObjectId format first
+      let messageUserId: string;
+      try {
+        // Try to use session's userId if it's valid
+        const sessionUserIdString = session.userId.toString();
+        // Validate it's a proper ObjectId format (24 hex characters)
+        if (/^[0-9a-fA-F]{24}$/.test(sessionUserIdString)) {
+          messageUserId = sessionUserIdString;
+        } else {
+          // Fallback to API key user if session userId is invalid
+          messageUserId = req.user!.userId;
+        }
+      } catch (error) {
+        // Fallback to API key user if there's any error
+        messageUserId = req.user!.userId;
+      }
+      
+      // Debug logging to see what we're working with
+      logger.info('Message creation debug info:', {
+        sessionUserId: session.userId,
+        messageUserId: messageUserId,
+        sessionUserIdType: typeof session.userId,
+        messageUserIdType: typeof messageUserId,
+        sessionUserIdString: session.userId.toString(),
+        apiKeyUserId: req.user!.userId,
+        apiKeyUserIdType: typeof req.user!.userId,
+        isValidObjectId: /^[0-9a-fA-F]{24}$/.test(messageUserId)
+      });
+
       // Create message record
       const message = await Message.createMessage({
-        userId: req.user!.userId,
+        userId: messageUserId,
         sessionId: messageData.sessionId,
         to: messageData.to,
         type: messageData.type as MessageType,
@@ -257,9 +286,9 @@ export class MessagesController {
         // Update message status
         await Message.updateStatus(message.messageId, MessageStatus.SENT);
 
-        // Record event
+        // Record event - use the same validated userId as the message
         await Event.recordEvent({
-          userId: req.user!.userId,
+          userId: messageUserId,
           sessionId: messageData.sessionId,
           type: EventType.MESSAGE_SENT,
           payload: {
@@ -271,7 +300,7 @@ export class MessagesController {
         });
 
         logger.info(`Message sent successfully: ${message.messageId}`, {
-          userId: req.user!.userId,
+          userId: messageUserId,
           sessionId: messageData.sessionId,
           to: messageData.to,
           type: messageData.type as MessageType,
@@ -504,9 +533,9 @@ export class MessagesController {
       // Update message status
       await Message.updateStatus(messageId, status as MessageStatus, error);
 
-      // Record event
+      // Record event - use the message's userId to maintain consistency
       await Event.recordEvent({
-        userId: req.user!.userId,
+        userId: message.userId.toString(),
         sessionId: message.sessionId,
         type: status === 'DELIVERED' ? EventType.MESSAGE_DELIVERED : EventType.MESSAGE_READ,
         payload: {

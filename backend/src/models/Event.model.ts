@@ -156,7 +156,7 @@ const EventSchema = new Schema<IEvent>({
           case EventType.MESSAGE_READ:
             return payload.messageId !== undefined;
           case EventType.QR_REFRESHED:
-            return payload.qrData !== undefined || payload.attempts !== undefined;
+            return payload.qrData !== undefined || payload.attempts !== undefined || payload.action !== undefined;
           case EventType.LOGIN:
           case EventType.LOGOUT:
             return payload.method !== undefined;

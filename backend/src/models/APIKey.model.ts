@@ -2,11 +2,37 @@ import mongoose, { Document, Schema, Model, Types } from 'mongoose';
 import crypto from 'crypto';
 import { APIKeyPermission, FIELD_LIMITS } from '../types/database.types';
 
+// Encryption utilities for API keys
+const ENCRYPTION_KEY = process.env.API_KEY_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const ALGORITHM = 'aes-256-gcm';
+
+function encryptAPIKey(key: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  let encrypted = cipher.update(key, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag();
+  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+}
+
+function decryptAPIKey(encryptedKey: string): string {
+  const parts = encryptedKey.split(':');
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encrypted = parts[2];
+  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
 // Interface for API Key document
 export interface IAPIKey extends Document {
   userId: Types.ObjectId;
   keyHash: string;
   keyPrefix: string;
+  encryptedKey: string; // Store encrypted version for reveal functionality
   label?: string;
   permissions: APIKeyPermission[];
   lastUsedAt?: Date;
@@ -64,6 +90,10 @@ const APIKeySchema = new Schema<IAPIKey>({
     type: String,
     required: [true, 'Key prefix is required'],
     length: [8, 'Key prefix must be exactly 8 characters']
+  },
+  encryptedKey: {
+    type: String,
+    required: [true, 'Encrypted key is required']
   },
   label: {
     type: String,
@@ -159,10 +189,14 @@ APIKeySchema.statics.generateAPIKey = async function(
     APIKeyPermission.EVENTS_READ
   ];
   
+  // Encrypt the raw key for storage
+  const encryptedKey = encryptAPIKey(rawKey);
+  
   const apiKey = new this({
     userId: new Types.ObjectId(userId),
     keyHash,
     keyPrefix,
+    encryptedKey,
     label: options.label,
     permissions: options.permissions || defaultPermissions
   });
@@ -307,3 +341,6 @@ APIKeySchema.pre('save', function(next) {
 
 // Create and export the model
 export const APIKey: IAPIKeyModel = mongoose.model<IAPIKey, IAPIKeyModel>('APIKey', APIKeySchema);
+
+// Export encryption utilities for use in controllers
+export { encryptAPIKey, decryptAPIKey };

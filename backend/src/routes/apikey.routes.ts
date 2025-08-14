@@ -31,4 +31,7 @@ router.post('/:keyId/rotate', rateLimitMiddleware('apikey-rotate', 3, 60 * 60), 
 // Get API key usage statistics
 router.get('/:keyId/usage', APIKeyController.getAPIKeyUsage);
 
+// Reveal full API key (rate limited for security)
+router.get('/:keyId/reveal', rateLimitMiddleware('apikey-reveal', 10, 60 * 60), APIKeyController.revealAPIKey);
+
 export default router;

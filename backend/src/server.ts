@@ -19,7 +19,7 @@ import { requestLogger } from './middleware/logging.middleware';
 import { rateLimiter } from './middleware/rateLimit.middleware.stub';
 import { SecurityMiddleware } from './middleware/security.middleware';
 import { setupSocketIO } from './socket/server';
-import { WPPConnectManager } from './wpp/manager.factory';
+import { WPPConnectManager, IWPPConnectManager } from './wpp/manager.factory';
 import { socketIOService } from './services/socketio.service';
 
 // Import routes
@@ -31,12 +31,13 @@ import messageRoutes from './routes/messages.routes';
 import webhookRoutes from './routes/webhooks.routes';
 import eventRoutes from './routes/events.routes';
 import healthRoutes from './routes/health.routes';
+import simpleTestRoutes, { initializeSimpleTest } from './routes/simple-test.routes';
 
 class Application {
   public app: express.Application;
   public server: any;
   public io: SocketIOServer;
-  // private wppManager: WPPConnectManager; // Temporarily disabled
+  private wppManager: IWPPConnectManager;
 
   constructor() {
     this.app = express();
@@ -49,7 +50,7 @@ class Application {
       },
       transports: ['websocket', 'polling'],
     });
-    // this.wppManager = WPPConnectManager.getInstance(); // Temporarily disabled
+    this.wppManager = WPPConnectManager.getInstance();
 
     this.initializeMiddleware();
     this.initializeRoutes();
@@ -141,7 +142,7 @@ class Application {
     try {
       // Connect to databases
       await connectDatabase();
-      
+
       // Try to connect to Redis (optional for development)
       try {
         await connectRedis();
@@ -151,14 +152,17 @@ class Application {
         logger.warn('⚠️ Some features may be limited without Redis (rate limiting, caching, etc.)');
       }
 
-      // Initialize WPPConnect manager - temporarily disabled for testing
-      // await this.wppManager.initialize();
+      // Initialize WPPConnect manager
+      await this.wppManager.initialize();
 
       // Register Socket.IO instance with service
       socketIOService.setServer(this.io);
 
       // Setup Socket.IO with WPPConnect manager
       setupSocketIO(this.io);
+
+      // Initialize simple test (working WhatsApp setup)
+      initializeSimpleTest(this.io);
 
       // Start server
       const port = process.env['PORT'] || 3001;
@@ -194,8 +198,8 @@ class Application {
           logger.info('Socket.IO server closed');
         });
 
-        // Close WPPConnect clients - temporarily disabled
-        // await this.wppManager.shutdown();
+        // Close WPPConnect clients
+        await this.wppManager.shutdown();
 
         // Close database connections
         // MongoDB and Redis connections will be closed by their respective modules

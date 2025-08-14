@@ -428,4 +428,78 @@ export class APIKeyController {
       });
     }
   }
+
+  /**
+   * Reveal full API key (for authorized users only)
+   */
+  static async revealAPIKey(req: Request, res: Response): Promise<void> {
+    try {
+      const { keyId } = req.params;
+
+      // Find the API key
+      const apiKey = await APIKey.findOne({
+        _id: keyId,
+        userId: req.user!.userId,
+        revokedAt: { $exists: false }
+      });
+
+      if (!apiKey) {
+        res.status(404).json({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'API key not found',
+            timestamp: new Date().toISOString(),
+            requestId: req.headers['x-request-id'] || 'unknown'
+          }
+        });
+        return;
+      }
+
+      // Log the reveal action for security
+      logger.warn(`API key revealed: ${keyId}`, {
+        userId: req.user!.userId,
+        keyLabel: apiKey.label,
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+
+      // Check if the API key has an encrypted version
+      if (!apiKey.encryptedKey) {
+        res.status(400).json({
+          error: {
+            code: 'LEGACY_API_KEY',
+            message: 'This API key was created before the reveal feature was available. Please create a new API key to use the reveal functionality.',
+            timestamp: new Date().toISOString(),
+            requestId: req.headers['x-request-id'] || 'unknown'
+          }
+        });
+        return;
+      }
+
+      // Decrypt and return the full API key
+      const { decryptAPIKey } = await import('../models/APIKey.model');
+      const fullKey = decryptAPIKey(apiKey.encryptedKey);
+
+      res.json({
+        success: true,
+        data: {
+          key: fullKey, // Full decrypted API key
+          label: apiKey.label,
+          keyId: apiKey._id,
+          warning: 'Keep this API key secure. Do not share it publicly.'
+        }
+      });
+
+    } catch (error) {
+      logger.error('Reveal API key error:', error);
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL',
+          message: 'Failed to reveal API key',
+          timestamp: new Date().toISOString(),
+          requestId: req.headers['x-request-id'] || 'unknown'
+        }
+      });
+    }
+  }
 }

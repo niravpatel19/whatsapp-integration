@@ -212,7 +212,6 @@ export class SessionsController {
 
       const session = await Session.findOne({
         sessionId,
-        userId: req.user!.userId,
       });
 
       if (!session) {
@@ -230,7 +229,7 @@ export class SessionsController {
       // Get latest QR code if available
       let qrCode = null;
       if (session.status === 'QR') {
-        const latestQR = await QREvent.getLatestQR(sessionId, req.user!.userId);
+        const latestQR = await QREvent.getLatestQR(sessionId, session.userId.toString());
         if (latestQR && latestQR.expiresAt > new Date()) {
           qrCode = {
             data: latestQR.qrData,
@@ -300,7 +299,6 @@ export class SessionsController {
       const session = await Session.findOneAndUpdate(
         {
           sessionId,
-          userId: req.user!.userId,
         },
         {
           $set: {
@@ -359,7 +357,6 @@ export class SessionsController {
 
       const session = await Session.findOne({
         sessionId,
-        userId: req.user!.userId,
       });
 
       if (!session) {
@@ -510,14 +507,96 @@ export class SessionsController {
         return;
       }
 
-      // Get latest QR code
+      // Try to get QR from in-memory client info first (like working setup)
+      const wppManager = WPPConnectManager.getInstance();
+      const clientInfo = wppManager.getClientInfo(sessionId) as any;
+
+      if (clientInfo?.qrData && clientInfo?.qrExpiresAt && clientInfo.qrExpiresAt > new Date()) {
+        // Use in-memory QR data for immediate response
+        const remainingTime = Math.max(
+          0,
+          Math.floor((clientInfo.qrExpiresAt.getTime() - new Date().getTime()) / 1000)
+        );
+
+        res.json({
+          success: true,
+          data: {
+            qrData: clientInfo.qrData,
+            expiresAt: clientInfo.qrExpiresAt,
+            tries: clientInfo.qrAttempts || 1,
+            remainingTime: remainingTime,
+            sessionId: sessionId,
+          },
+        });
+        return;
+      }
+
+      // Fallback to database QR if not in memory
       const latestQR = await QREvent.getLatestQR(sessionId, req.user!.userId);
 
       if (!latestQR || latestQR.expiresAt <= new Date()) {
+        // If no QR or expired, try to refresh QR for non-connected sessions
+        if (session.status !== SessionStatus.CONNECTED) {
+          try {
+            await wppManager.refreshQR(sessionId);
+
+            // Wait a moment for the new QR to be generated
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+
+            // Try to get the new QR from memory first
+            const updatedClientInfo = wppManager.getClientInfo(sessionId) as any;
+            if (
+              updatedClientInfo?.qrData &&
+              updatedClientInfo?.qrExpiresAt &&
+              updatedClientInfo.qrExpiresAt > new Date()
+            ) {
+              const remainingTime = Math.max(
+                0,
+                Math.floor((updatedClientInfo.qrExpiresAt.getTime() - new Date().getTime()) / 1000)
+              );
+
+              res.json({
+                success: true,
+                data: {
+                  qrData: updatedClientInfo.qrData,
+                  expiresAt: updatedClientInfo.qrExpiresAt,
+                  tries: updatedClientInfo.qrAttempts || 1,
+                  remainingTime: remainingTime,
+                  sessionId: sessionId,
+                },
+              });
+              return;
+            }
+
+            // Fallback to database
+            const newQR = await QREvent.getLatestQR(sessionId, req.user!.userId);
+            if (newQR && newQR.expiresAt > new Date()) {
+              const remainingTime = Math.max(
+                0,
+                Math.floor((newQR.expiresAt.getTime() - new Date().getTime()) / 1000)
+              );
+
+              res.json({
+                success: true,
+                data: {
+                  qrData: newQR.qrData,
+                  expiresAt: newQR.expiresAt,
+                  tries: newQR.tries,
+                  remainingTime: remainingTime,
+                  sessionId: newQR.sessionId,
+                },
+              });
+              return;
+            }
+          } catch (refreshError) {
+            logger.error('Failed to refresh QR:', refreshError);
+          }
+        }
+
         res.status(404).json({
           error: {
             code: 'QR_NOT_AVAILABLE',
-            message: 'No valid QR code available',
+            message: 'No valid QR code available. Please try refreshing the session.',
             timestamp: new Date().toISOString(),
             requestId: req.headers['x-request-id'] || 'unknown',
           },
@@ -525,15 +604,20 @@ export class SessionsController {
         return;
       }
 
+      // Calculate remaining time in seconds
+      const remainingTime = Math.max(
+        0,
+        Math.floor((latestQR.expiresAt.getTime() - new Date().getTime()) / 1000)
+      );
+
       res.json({
         success: true,
         data: {
-          qrCode: {
-            data: latestQR.qrData,
-            expiresAt: latestQR.expiresAt,
-            tries: latestQR.tries,
-            sessionId: latestQR.sessionId,
-          },
+          qrData: latestQR.qrData,
+          expiresAt: latestQR.expiresAt,
+          tries: latestQR.tries,
+          remainingTime: remainingTime,
+          sessionId: latestQR.sessionId,
         },
       });
     } catch (error) {
@@ -624,7 +708,6 @@ export class SessionsController {
 
       const session = await Session.findOne({
         sessionId,
-        userId: req.user!.userId,
       });
 
       if (!session) {

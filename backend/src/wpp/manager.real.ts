@@ -75,13 +75,99 @@ export class WPPConnectManager {
     }
 
     logger.info('Initializing WPPConnect Manager');
+
+    // Restore existing sessions after restart
+    await this.restoreExistingSessions();
+
     this.isInitialized = true;
+  }
+
+  /**
+   * Restore existing sessions after backend restart
+   * This ensures sessions remain connected even after server restarts
+   */
+  private async restoreExistingSessions(): Promise<void> {
+    try {
+      logger.info('Restoring existing sessions after restart...');
+
+      // Find all sessions that should be active (CONNECTED or QR status)
+      // Also include PENDING sessions that might need restoration
+      const activeSessions = await Session.find({
+        status: { $in: [SessionStatus.CONNECTED, SessionStatus.QR, SessionStatus.PENDING] },
+      })
+        .select('sessionId userId deviceInfo status')
+        .lean();
+        
+      // If no active sessions found, log all sessions for debugging
+      if (activeSessions.length === 0) {
+        const allSessions = await Session.find({})
+          .select('sessionId status')
+          .lean();
+        logger.info(`No active sessions found. All sessions in database:`, 
+          allSessions.map(s => ({ sessionId: s.sessionId, status: s.status }))
+        );
+      }
+
+      logger.info(`Found ${activeSessions.length} sessions to restore`);
+      
+      // Log details of sessions found
+      activeSessions.forEach(session => {
+        logger.info(`Session to restore: ${session.sessionId} (status: ${session.status})`);
+      });
+
+      // Restore each session
+      for (const session of activeSessions) {
+        try {
+          const sessionPath = path.join(this.sessionsPath, session.sessionId);
+
+          // Check if session files exist
+          if (fs.existsSync(sessionPath)) {
+            logger.info(`Restoring session: ${session.sessionId}`);
+
+            // Initialize the client with existing session data
+            await this.initializeClient(session.sessionId, {
+              session: session.sessionId,
+              deviceName: session.deviceInfo?.name || 'WhatsApp Web',
+              headless: true,
+              devtools: false,
+              useChrome: true,
+              debug: false,
+              logQR: false,
+              browserArgs: ['--no-sandbox', '--disable-setuid-sandbox'],
+            });
+
+            logger.info(`Session restored successfully: ${session.sessionId}`);
+          } else {
+            // Session files don't exist, mark as disconnected
+            logger.warn(
+              `Session files not found for ${session.sessionId}, marking as disconnected`
+            );
+            await Session.updateStatus(session.sessionId, SessionStatus.DISCONNECTED);
+          }
+        } catch (error) {
+          logger.error(`Failed to restore session ${session.sessionId}:`, error);
+          // Mark session as error if restoration fails
+          await Session.updateStatus(
+            session.sessionId,
+            SessionStatus.ERROR,
+            (error as Error).message
+          );
+        }
+      }
+
+      logger.info('Session restoration completed');
+    } catch (error) {
+      logger.error('Failed to restore existing sessions:', error);
+    }
   }
 
   async initializeClient(sessionId: string, config: WPPConfig): Promise<void> {
     logger.info(`Initializing WPP client: ${sessionId}`, config);
 
     try {
+      // Clean up any existing session data to prevent conflicts
+      await this.cleanupSessionData(sessionId);
+
       // Create client info
       const clientInfo: ClientInfo = {
         sessionId,
@@ -95,7 +181,7 @@ export class WPPConnectManager {
 
       this.clients.set(sessionId, clientInfo);
 
-      // Create WhatsApp client using the correct WPPConnect API
+      // Create WhatsApp client using the exact working WPPConnect configuration
       const client = await create({
         session: sessionId,
         catchQR: (base64Qr: string, asciiQR: string, attempts: number) => {
@@ -104,30 +190,13 @@ export class WPPConnectManager {
         statusFind: (statusSession: string, session: string) => {
           this.handleStatusChange(sessionId, statusSession);
         },
-        headless: config.headless || true,
-        devtools: config.devtools || false,
-        useChrome: config.useChrome || true,
-        debug: config.debug || false,
-        logQR: config.logQR || false,
-        browserArgs: config.browserArgs || [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-        ],
+        headless: true,
+        logQR: false,
+        autoClose: 0, // Disable auto-close completely (0 = disabled)
+        browserArgs: ['--no-sandbox', '--disable-setuid-sandbox'],
         puppeteerOptions: {
           userDataDir: path.join(this.sessionsPath, sessionId),
-          args: config.browserArgs || [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-          ],
         },
-        createPathFileToken: true,
-        waitForLogin: true,
       });
 
       clientInfo.client = client;
@@ -165,46 +234,72 @@ export class WPPConnectManager {
     const clientInfo = this.clients.get(sessionId);
     if (!clientInfo) return;
 
-    try {
-      clientInfo.status = 'QR';
-      clientInfo.lastActivity = new Date();
+    // Update client status immediately (like working setup)
+    clientInfo.status = 'QR';
+    clientInfo.lastActivity = new Date();
 
-      // Update session status
-      await Session.updateStatus(sessionId, SessionStatus.QR);
+    // Store QR data in client info for immediate access
+    (clientInfo as any).qrData = base64Qr;
+    (clientInfo as any).qrAttempts = attempts;
+    (clientInfo as any).qrExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-      // Find the session to get the userId
-      const session = await Session.findOne({ sessionId });
-      if (!session) {
-        logger.error(`Session not found for QR generation: ${sessionId}`);
-        return;
-      }
+    // Debug QR code format
+    logger.debug(`QR Code format for ${sessionId}:`, {
+      length: base64Qr.length,
+      startsWithDataUri: base64Qr.startsWith('data:image/'),
+      attempts: attempts,
+    });
 
+    // IMMEDIATE broadcast like Simple Test (no await, no blocking)
+    const session = await Session.findOne({ sessionId }).select('userId').lean();
+    if (session) {
       const userId = session.userId.toString();
 
-      // Create QR event in database
-      await QREvent.createQREvent(
-        userId,
-        sessionId,
-        base64Qr,
-        5 // 5 minutes expiration for real QR codes
-      );
+      // Immediate Socket.IO broadcast (like working setup)
+      try {
+        const { SocketIOService } = await import('../services/socketio.service');
+        const socketService = SocketIOService.getInstance();
 
-      // Record event
-      await Event.recordEvent({
-        userId,
-        sessionId,
-        type: EventType.QR_REFRESHED,
-        payload: {
-          attempts,
-          expiresAt: new Date(Date.now() + 5 * 60 * 1000),
-          qrLength: base64Qr.length,
-        },
+        // Broadcast QR immediately
+        socketService.broadcastToUser(userId, 'qr:update', {
+          sessionId,
+          qrData: base64Qr,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+          tries: attempts,
+          remainingTime: 15 * 60,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Also broadcast status change immediately
+        socketService.broadcastToUser(userId, 'session:state', {
+          sessionId,
+          status: 'QR',
+          timestamp: new Date().toISOString(),
+        });
+      } catch (broadcastError) {
+        logger.error('Failed to broadcast QR update:', broadcastError);
+      }
+
+      // Database operations in background (non-blocking like Simple Test)
+      process.nextTick(async () => {
+        try {
+          await Session.updateStatus(sessionId, SessionStatus.QR);
+          await QREvent.createQREvent(userId, sessionId, base64Qr, 15);
+          await Event.recordEvent({
+            userId,
+            sessionId,
+            type: EventType.QR_REFRESHED,
+            payload: {
+              attempts,
+              expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+              qrLength: base64Qr.length,
+            },
+          });
+          logger.info(`QR code stored for session: ${sessionId}`);
+        } catch (error) {
+          logger.error('Failed to store QR code in database:', error);
+        }
       });
-
-      logger.info(`QR code stored for session: ${sessionId}`);
-    } catch (error) {
-      logger.error('Failed to handle QR code:', error);
-      await Session.updateStatus(sessionId, SessionStatus.ERROR, (error as Error).message);
     }
   }
 
@@ -214,85 +309,105 @@ export class WPPConnectManager {
     const clientInfo = this.clients.get(sessionId);
     if (!clientInfo) return;
 
+    // Get session info quickly
+    const session = await Session.findOne({ sessionId }).select('userId').lean();
+    if (!session) return;
+
+    const userId = session.userId.toString();
+    let newStatus: SessionStatus;
+    let eventPayload: any = { oldStatus: clientInfo.status, newStatus: status };
+
+    // Map status immediately (like Simple Test)
+    switch (status) {
+      case 'isLogged':
+      case 'CONNECTED':
+        newStatus = SessionStatus.CONNECTED;
+        clientInfo.status = 'CONNECTED';
+        clientInfo.connectionTime = new Date();
+        break;
+
+      case 'notLogged':
+      case 'DISCONNECTED':
+        newStatus = SessionStatus.DISCONNECTED;
+        clientInfo.status = 'DISCONNECTED';
+        break;
+
+      case 'browserClose':
+      case 'serverClose':
+        newStatus = SessionStatus.EXPIRED;
+        clientInfo.status = 'DISCONNECTED';
+        break;
+
+      case 'qrReadError':
+      case 'autocloseCalled':
+      case 'desconnectedMobile':
+        newStatus = SessionStatus.ERROR;
+        clientInfo.status = 'ERROR';
+        clientInfo.errorCount++;
+        break;
+
+      default:
+        logger.info(`Unhandled status: ${status}`);
+        return;
+    }
+
+    clientInfo.lastActivity = new Date();
+
+    // IMMEDIATE broadcast like Simple Test
     try {
-      const session = await Session.findOne({ sessionId });
-      if (!session) return;
+      const { SocketIOService } = await import('../services/socketio.service');
+      const socketService = SocketIOService.getInstance();
 
-      const userId = session.userId.toString();
-      let newStatus: SessionStatus;
-      let eventPayload: any = { oldStatus: clientInfo.status, newStatus: status };
+      socketService.broadcastToUser(userId, 'session:state', {
+        sessionId,
+        status: newStatus,
+        phone: clientInfo.phone,
+        deviceInfo: clientInfo.deviceInfo,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (broadcastError) {
+      logger.error('Failed to broadcast session state change:', broadcastError);
+    }
 
-      switch (status) {
-        case 'isLogged':
-        case 'CONNECTED':
-          newStatus = SessionStatus.CONNECTED;
-          clientInfo.status = 'CONNECTED';
-          clientInfo.connectionTime = new Date();
-
-          // Get phone number and device info
+    // Background database operations (non-blocking like Simple Test)
+    process.nextTick(async () => {
+      try {
+        // Get device info for connected sessions
+        if (newStatus === SessionStatus.CONNECTED && clientInfo.client) {
           try {
-            if (clientInfo.client) {
-              const hostDevice = await clientInfo.client.getHostDevice();
-              if (hostDevice && hostDevice.wid) {
-                clientInfo.phone = hostDevice.wid._serialized.split('@')[0];
-                clientInfo.deviceInfo = {
-                  name: hostDevice.pushname || 'Unknown',
-                  platform: 'WhatsApp Web',
-                  version: 'Unknown',
-                };
-
-                eventPayload = {
-                  ...eventPayload,
-                  deviceInfo: clientInfo.deviceInfo,
-                  phone: clientInfo.phone,
-                };
-              }
+            const hostDevice = await clientInfo.client.getHostDevice();
+            if (hostDevice && hostDevice.wid) {
+              clientInfo.phone = hostDevice.wid._serialized.split('@')[0];
+              clientInfo.deviceInfo = {
+                name: hostDevice.pushname || 'Unknown',
+                platform: 'WhatsApp Web',
+                version: 'Unknown',
+              };
+              eventPayload = {
+                ...eventPayload,
+                deviceInfo: clientInfo.deviceInfo,
+                phone: clientInfo.phone,
+              };
             }
           } catch (err) {
             logger.warn('Failed to get device info:', err);
           }
-          break;
+        }
 
-        case 'notLogged':
-        case 'DISCONNECTED':
-          newStatus = SessionStatus.DISCONNECTED;
-          clientInfo.status = 'DISCONNECTED';
-          break;
+        // Update database
+        await Session.updateStatus(sessionId, newStatus);
+        await Event.recordEvent({
+          userId,
+          sessionId,
+          type: EventType.SESSION_STATE,
+          payload: eventPayload,
+        });
 
-        case 'browserClose':
-        case 'serverClose':
-          newStatus = SessionStatus.EXPIRED;
-          clientInfo.status = 'DISCONNECTED';
-          break;
-
-        case 'qrReadError':
-        case 'autocloseCalled':
-        case 'desconnectedMobile':
-          newStatus = SessionStatus.ERROR;
-          clientInfo.status = 'ERROR';
-          clientInfo.errorCount++;
-          break;
-
-        default:
-          logger.info(`Unhandled status: ${status}`);
-          return;
+        logger.debug(`Status change processed for ${sessionId}: ${status} -> ${newStatus}`);
+      } catch (error) {
+        logger.error('Failed to process status change in background:', error);
       }
-
-      // Update session status
-      await Session.updateStatus(sessionId, newStatus);
-      clientInfo.lastActivity = new Date();
-
-      // Record event
-      await Event.recordEvent({
-        userId,
-        sessionId,
-        type: EventType.SESSION_STATE,
-        payload: eventPayload,
-      });
-    } catch (error) {
-      logger.error('Failed to handle status change:', error);
-      await Session.updateStatus(sessionId, SessionStatus.ERROR, (error as Error).message);
-    }
+    });
   }
 
   private async handleIncomingMessage(sessionId: string, message: any): Promise<void> {
@@ -396,6 +511,20 @@ export class WPPConnectManager {
       clientInfo.status = 'DISCONNECTED';
       this.clients.delete(sessionId);
     }
+
+    // Clean up session files
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const sessionPath = path.join(process.env.WPP_SESSION_PATH || './sessions', sessionId);
+
+      if (fs.existsSync(sessionPath)) {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        logger.info(`Session files deleted: ${sessionPath}`);
+      }
+    } catch (error) {
+      logger.error(`Error deleting session files for ${sessionId}:`, error);
+    }
   }
 
   async refreshQR(sessionId: string): Promise<void> {
@@ -423,22 +552,6 @@ export class WPPConnectManager {
     }
   }
 
-  async reconnectClient(sessionId: string): Promise<void> {
-    logger.info(`Reconnecting client: ${sessionId}`);
-
-    const clientInfo = this.clients.get(sessionId);
-    if (clientInfo && clientInfo.client) {
-      try {
-        // For reconnection, we restart the client
-        await this.refreshQR(sessionId);
-        clientInfo.status = 'INITIALIZING';
-        clientInfo.lastActivity = new Date();
-      } catch (error) {
-        logger.error(`Error reconnecting ${sessionId}:`, error);
-      }
-    }
-  }
-
   async sendTextMessage(sessionId: string, to: string, content: string): Promise<any> {
     logger.info(`Sending text message: ${sessionId} -> ${to}`);
 
@@ -452,7 +565,11 @@ export class WPPConnectManager {
     }
 
     try {
-      const result = await clientInfo.client.sendText(to, content);
+      // Format phone number for WPPConnect (remove + sign)
+      const formattedTo = to.startsWith('+') ? to.substring(1) : to;
+      logger.info(`Formatted phone number: ${to} -> ${formattedTo}`);
+
+      const result = await clientInfo.client.sendText(formattedTo, content);
       clientInfo.messageCount++;
       clientInfo.lastActivity = new Date();
       return result;
@@ -480,7 +597,15 @@ export class WPPConnectManager {
     }
 
     try {
-      const result = await clientInfo.client.sendImage(to, imageUrl, 'image', caption || '');
+      // Format phone number for WPPConnect (remove + sign)
+      const formattedTo = to.startsWith('+') ? to.substring(1) : to;
+
+      const result = await clientInfo.client.sendImage(
+        formattedTo,
+        imageUrl,
+        'image',
+        caption || ''
+      );
       clientInfo.messageCount++;
       clientInfo.lastActivity = new Date();
       return result;
@@ -508,7 +633,14 @@ export class WPPConnectManager {
     }
 
     try {
-      const result = await clientInfo.client.sendFile(to, documentUrl, filename || 'document');
+      // Format phone number for WPPConnect (remove + sign)
+      const formattedTo = to.startsWith('+') ? to.substring(1) : to;
+
+      const result = await clientInfo.client.sendFile(
+        formattedTo,
+        documentUrl,
+        filename || 'document'
+      );
       clientInfo.messageCount++;
       clientInfo.lastActivity = new Date();
       return result;
@@ -531,7 +663,10 @@ export class WPPConnectManager {
     }
 
     try {
-      const result = await clientInfo.client.sendPtt(to, audioUrl);
+      // Format phone number for WPPConnect (remove + sign)
+      const formattedTo = to.startsWith('+') ? to.substring(1) : to;
+
+      const result = await clientInfo.client.sendPtt(formattedTo, audioUrl);
       clientInfo.messageCount++;
       clientInfo.lastActivity = new Date();
       return result;
@@ -559,7 +694,15 @@ export class WPPConnectManager {
     }
 
     try {
-      const result = await clientInfo.client.sendVideoAsGif(to, videoUrl, 'video', caption || '');
+      // Format phone number for WPPConnect (remove + sign)
+      const formattedTo = to.startsWith('+') ? to.substring(1) : to;
+
+      const result = await clientInfo.client.sendVideoAsGif(
+        formattedTo,
+        videoUrl,
+        'video',
+        caption || ''
+      );
       clientInfo.messageCount++;
       clientInfo.lastActivity = new Date();
       return result;
@@ -588,8 +731,11 @@ export class WPPConnectManager {
     }
 
     try {
+      // Format phone number for WPPConnect (remove + sign)
+      const formattedTo = to.startsWith('+') ? to.substring(1) : to;
+
       const result = await clientInfo.client.sendLocation(
-        to,
+        formattedTo,
         latitude.toString(),
         longitude.toString(),
         address || ''
@@ -646,6 +792,38 @@ export class WPPConnectManager {
     return (errorClients / clients.length) * 100;
   }
 
+  /**
+   * Clean up session data to prevent conflicts
+   */
+  private async cleanupSessionData(sessionId: string): Promise<void> {
+    try {
+      const sessionPath = path.join(this.sessionsPath, sessionId);
+
+      // Remove existing session directory if it exists
+      if (fs.existsSync(sessionPath)) {
+        logger.info(`Cleaning up existing session data for: ${sessionId}`);
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+      }
+
+      // Clean up any existing client info
+      if (this.clients.has(sessionId)) {
+        const existingClient = this.clients.get(sessionId);
+        if (existingClient?.client) {
+          try {
+            await existingClient.client.close();
+          } catch (error) {
+            logger.warn(`Error closing existing client ${sessionId}:`, error);
+          }
+        }
+        this.clients.delete(sessionId);
+      }
+
+      logger.debug(`Session data cleanup completed for: ${sessionId}`);
+    } catch (error) {
+      logger.error(`Failed to cleanup session data for ${sessionId}:`, error);
+    }
+  }
+
   async cleanup(): Promise<void> {
     logger.info('Cleaning up WPPConnect Manager');
 
@@ -655,5 +833,35 @@ export class WPPConnectManager {
 
     this.clients.clear();
     this.isInitialized = false;
+  }
+
+  async shutdown(): Promise<void> {
+    logger.info('Shutting down WPPConnect Manager');
+    await this.cleanup();
+  }
+
+  async reconnectClient(sessionId: string): Promise<void> {
+    logger.info(`Reconnecting client: ${sessionId}`);
+
+    // Destroy existing client if it exists
+    await this.destroyClient(sessionId);
+
+    // Find session in database to get configuration
+    const session = await Session.findOne({ sessionId }).lean();
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    // Reinitialize the client
+    await this.initializeClient(sessionId, {
+      session: sessionId,
+      deviceName: session.deviceInfo?.name || 'WhatsApp Web',
+      headless: true,
+      devtools: false,
+      useChrome: true,
+      debug: false,
+      logQR: false,
+      browserArgs: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
   }
 }

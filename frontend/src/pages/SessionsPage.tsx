@@ -24,11 +24,13 @@ import {
   PhoneOutlined,
   WifiOutlined,
   DisconnectOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  CopyOutlined
 } from '@ant-design/icons';
 import { useSocket, type QRUpdatePayload } from '../hooks/useSocket';
 import api, { sessionsApi, type Session } from '../services/api';
-import QRCode from 'qrcode.react';
+import { io } from 'socket.io-client';
+import { useAuthStore } from '../stores/authStore';
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
@@ -75,8 +77,11 @@ const SessionsPage: React.FC = () => {
   };
 
   // Handle create session
+  const [createLoading, setCreateLoading] = useState(false);
+  
   const handleCreateSession = async (values: { deviceName?: string; webhookUrl?: string }) => {
     try {
+      setCreateLoading(true);
       const response = await createSession(values.deviceName, values.webhookUrl);
       if (response.success) {
         message.success('Session created successfully');
@@ -88,6 +93,8 @@ const SessionsPage: React.FC = () => {
       }
     } catch (error: any) {
       message.error('Failed to create session: ' + error.message);
+    } finally {
+      setCreateLoading(false);
     }
   };
 
@@ -141,9 +148,80 @@ const SessionsPage: React.FC = () => {
     }
   };
 
-  // Socket event handlers
+  // Direct Socket.IO connection test (bypass useSocket hook)
   useEffect(() => {
+    console.log('🔌 Setting up DIRECT Socket.IO connection test');
+    const { token } = useAuthStore.getState();
+    
+    if (token) {
+      const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+      const directSocket = io(socketUrl, {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+      });
+
+      directSocket.on('connect', () => {
+        console.log('🟢 Direct Socket.IO connected:', directSocket.id);
+      });
+
+      directSocket.on('qr:update', (data: any) => {
+        console.log('🔥 DIRECT QR Update received:', data);
+        
+        // Update session with new QR data and auto-open modal
+        setSessions(prevSessions => {
+          const updatedSessions = prevSessions.map(session => 
+            session.sessionId === data.sessionId 
+              ? {
+                  ...session,
+                  qrData: data.qrData,
+                  qrExpiresAt: data.expiresAt,
+                  qrTries: data.tries,
+                  remainingTime: data.remainingTime,
+                  status: 'QR'
+                }
+              : session
+          );
+
+          // Auto-open QR modal (always try to open for new QR)
+          const session = updatedSessions.find(s => s.sessionId === data.sessionId);
+          if (session && session.qrData) {
+            console.log('🚀 Auto-opening QR modal for session:', session.sessionId);
+            setSelectedSession(session);
+            setQrModalVisible(true);
+            message.success('QR Code generated! Scan with WhatsApp.');
+          }
+
+          return updatedSessions;
+        });
+      });
+
+      directSocket.on('session:state', (data: any) => {
+        console.log('🔄 DIRECT Session state change:', data);
+        setSessions(prev => prev.map(session => 
+          session.sessionId === data.sessionId 
+            ? { ...session, status: data.status, phone: data.phone }
+            : session
+        ));
+      });
+
+      directSocket.on('disconnect', () => {
+        console.log('🔴 Direct Socket.IO disconnected');
+      });
+
+      return () => {
+        console.log('🧹 Cleaning up direct Socket.IO connection');
+        directSocket.disconnect();
+      };
+    }
+  }, []); // Remove dependencies to prevent re-creation
+
+  // Original Socket event handlers (keep as backup)
+  useEffect(() => {
+    console.log('🔌 Setting up Socket.IO event listeners, connection status:', connectionStatus);
+    
     const unsubscribeQR = onQRUpdate((data: QRUpdatePayload) => {
+      console.log('🔥 QR Update received:', data); // Debug log
+      
       // Update session with new QR data
       setSessions(prev => prev.map(session => 
         session.sessionId === data.sessionId 
@@ -152,10 +230,30 @@ const SessionsPage: React.FC = () => {
               qrData: data.qrData,
               qrExpiresAt: data.expiresAt,
               qrTries: data.tries,
-              remainingTime: data.remainingTime
+              remainingTime: data.remainingTime,
+              status: 'QR' // Ensure status is set to QR
             }
           : session
       ));
+
+      // Auto-open QR modal for new QR codes (if no modal is currently open)
+      setSessions(prevSessions => {
+        if (!qrModalVisible) {
+          const session = prevSessions.find(s => s.sessionId === data.sessionId);
+          if (session) {
+            setSelectedSession({
+              ...session,
+              qrData: data.qrData,
+              qrExpiresAt: data.expiresAt,
+              qrTries: data.tries,
+              remainingTime: data.remainingTime
+            });
+            setQrModalVisible(true);
+            message.success('QR Code generated! Scan with WhatsApp.');
+          }
+        }
+        return prevSessions; // Return the same sessions array since we already updated it above
+      });
 
       // Update selected session if QR modal is open
       if (selectedSession && selectedSession.sessionId === data.sessionId) {
@@ -197,7 +295,7 @@ const SessionsPage: React.FC = () => {
       unsubscribeDeleted();
       unsubscribeError();
     };
-  }, [onQRUpdate, onSessionStateChange, onSessionDeleted, onError, selectedSession]);
+  }, [onQRUpdate, onSessionStateChange, onSessionDeleted, onError]);
 
   // Load sessions on mount
   useEffect(() => {
@@ -273,7 +371,18 @@ const SessionsPage: React.FC = () => {
       key: 'actions',
       render: (_: any, record: SessionWithQR) => (
         <Space>
-          {(record.status === 'QR' || record.status === 'PENDING') && (
+          <Tooltip title="Copy Session ID">
+            <Button 
+              type="text" 
+              icon={<CopyOutlined />} 
+              size="small"
+              onClick={() => {
+                navigator.clipboard.writeText(record.sessionId);
+                message.success('Session ID copied to clipboard!');
+              }}
+            />
+          </Tooltip>
+          {record.status !== 'CONNECTED' && (
             <Tooltip title="Show QR Code">
               <Button 
                 type="primary" 
@@ -411,7 +520,7 @@ const SessionsPage: React.FC = () => {
                 }}>
                   Cancel
                 </Button>
-                <Button type="primary" htmlType="submit">
+                <Button type="primary" htmlType="submit" loading={createLoading}>
                   Create Session
                 </Button>
               </Space>
@@ -443,11 +552,20 @@ const SessionsPage: React.FC = () => {
           {selectedSession?.qrData ? (
             <div className="text-center">
               <div className="mb-4">
-                <QRCode 
-                  value={selectedSession.qrData} 
-                  size={256}
-                  level="M"
-                  includeMargin
+                <img 
+                  src={selectedSession.qrData} 
+                  width={256} 
+                  height={256} 
+                  alt="WhatsApp QR Code"
+                  style={{ 
+                    border: '1px solid #d9d9d9', 
+                    borderRadius: '8px',
+                    backgroundColor: 'white'
+                  }}
+                  onError={(e) => {
+                    console.error('QR Code image failed to load');
+                    e.currentTarget.style.display = 'none';
+                  }}
                 />
               </div>
               <div className="space-y-2">

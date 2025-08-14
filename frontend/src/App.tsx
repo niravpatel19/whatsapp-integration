@@ -10,6 +10,7 @@ const DashboardPage = React.lazy(() => import('@/pages/DashboardPage'));
 const SessionsPage = React.lazy(() => import('@/pages/SessionsPage'));
 const MessagesPage = React.lazy(() => import('@/pages/MessagesPage'));
 const ProfilePage = React.lazy(() => import('@/pages/ProfilePage'));
+const SimpleWhatsAppTest = React.lazy(() => import('@/pages/SimpleWhatsAppTest'));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
 
 const { Content } = Layout;
@@ -124,6 +125,14 @@ const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/simple-test"
+              element={
+                <ProtectedRoute>
+                  <SimpleWhatsAppTest />
                 </ProtectedRoute>
               }
             />

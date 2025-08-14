@@ -383,4 +383,9 @@ export class WPPConnectManager {
     this.clients.clear();
     this.isInitialized = false;
   }
+
+  async shutdown(): Promise<void> {
+    logger.info('Shutting down WPPConnect Manager (stub)');
+    await this.cleanup();
+  }
 }

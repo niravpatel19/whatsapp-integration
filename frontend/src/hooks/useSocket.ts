@@ -48,7 +48,9 @@ interface UseSocketReturn {
   onQRUpdate: (callback: (data: QRUpdatePayload) => void) => () => void;
   onSessionStateChange: (callback: (data: any) => void) => () => void;
   onMessageStatus: (callback: (data: any) => void) => () => void;
-  onSessionDeleted: (callback: (data: { sessionId: string; timestamp: string }) => void) => () => void;
+  onSessionDeleted: (
+    callback: (data: { sessionId: string; timestamp: string }) => void
+  ) => () => void;
   onError: (callback: (error: any) => void) => () => void;
 }
 
@@ -123,153 +125,189 @@ export const useSocket = (): UseSocketReturn => {
     };
   }, [isAuthenticated, token]);
 
-  const emit = useCallback((event: string, data?: any) => {
-    if (socket && connectionStatus === 'connected') {
-      socket.emit(event, data);
-    } else {
-      console.warn('Socket not connected, cannot emit event:', event);
-    }
-  }, [socket, connectionStatus]);
-
-  const on = useCallback((event: string, callback: (data: any) => void) => {
-    if (socket) {
-      socket.on(event, callback);
-    }
-  }, [socket]);
-
-  const off = useCallback((event: string, callback?: (data: any) => void) => {
-    if (socket) {
-      if (callback) {
-        socket.off(event, callback);
+  const emit = useCallback(
+    (event: string, data?: any) => {
+      if (socket && connectionStatus === 'connected') {
+        socket.emit(event, data);
       } else {
-        socket.off(event);
+        console.warn('Socket not connected, cannot emit event:', event);
       }
-    }
-  }, [socket]);
+    },
+    [socket, connectionStatus]
+  );
+
+  const on = useCallback(
+    (event: string, callback: (data: any) => void) => {
+      if (socket) {
+        socket.on(event, callback);
+      }
+    },
+    [socket]
+  );
+
+  const off = useCallback(
+    (event: string, callback?: (data: any) => void) => {
+      if (socket) {
+        if (callback) {
+          socket.off(event, callback);
+        } else {
+          socket.off(event);
+        }
+      }
+    },
+    [socket]
+  );
 
   // Enhanced session management functions
-  const createSession = useCallback((deviceName?: string, webhookUrl?: string): Promise<SocketResponse> => {
-    return new Promise((resolve, reject) => {
-      if (!socket || connectionStatus !== 'connected') {
-        reject(new Error('Socket not connected'));
-        return;
-      }
+  const createSession = useCallback(
+    (deviceName?: string, webhookUrl?: string): Promise<SocketResponse> => {
+      return new Promise((resolve, reject) => {
+        if (!socket || connectionStatus !== 'connected') {
+          reject(new Error('Socket not connected'));
+          return;
+        }
 
-      const timeout = setTimeout(() => {
-        reject(new Error('Request timeout'));
-      }, 30000);
+        const timeout = setTimeout(() => {
+          reject(new Error('Request timeout - Session creation is taking longer than expected'));
+        }, 120000); // Increased to 2 minutes for WPPConnect initialization
 
-      socket.emit('session:create', { deviceName, webhookUrl }, (response: SocketResponse) => {
-        clearTimeout(timeout);
-        resolve(response);
+        socket.emit('session:create', { deviceName, webhookUrl }, (response: SocketResponse) => {
+          clearTimeout(timeout);
+          resolve(response);
+        });
       });
-    });
-  }, [socket, connectionStatus]);
+    },
+    [socket, connectionStatus]
+  );
 
-  const deleteSession = useCallback((sessionId: string): Promise<SocketResponse> => {
-    return new Promise((resolve, reject) => {
-      if (!socket || connectionStatus !== 'connected') {
-        reject(new Error('Socket not connected'));
-        return;
-      }
+  const deleteSession = useCallback(
+    (sessionId: string): Promise<SocketResponse> => {
+      return new Promise((resolve, reject) => {
+        if (!socket || connectionStatus !== 'connected') {
+          reject(new Error('Socket not connected'));
+          return;
+        }
 
-      const timeout = setTimeout(() => {
-        reject(new Error('Request timeout'));
-      }, 15000);
+        const timeout = setTimeout(() => {
+          reject(new Error('Request timeout'));
+        }, 15000);
 
-      socket.emit('session:delete', { sessionId }, (response: SocketResponse) => {
-        clearTimeout(timeout);
-        resolve(response);
+        socket.emit('session:delete', { sessionId }, (response: SocketResponse) => {
+          clearTimeout(timeout);
+          resolve(response);
+        });
       });
-    });
-  }, [socket, connectionStatus]);
+    },
+    [socket, connectionStatus]
+  );
 
-  const refreshQR = useCallback((sessionId: string): Promise<SocketResponse> => {
-    return new Promise((resolve, reject) => {
-      if (!socket || connectionStatus !== 'connected') {
-        reject(new Error('Socket not connected'));
-        return;
-      }
+  const refreshQR = useCallback(
+    (sessionId: string): Promise<SocketResponse> => {
+      return new Promise((resolve, reject) => {
+        if (!socket || connectionStatus !== 'connected') {
+          reject(new Error('Socket not connected'));
+          return;
+        }
 
-      const timeout = setTimeout(() => {
-        reject(new Error('Request timeout'));
-      }, 15000);
+        const timeout = setTimeout(() => {
+          reject(new Error('Request timeout'));
+        }, 15000);
 
-      socket.emit('session:refresh_qr', { sessionId }, (response: SocketResponse) => {
-        clearTimeout(timeout);
-        resolve(response);
+        socket.emit('session:refresh_qr', { sessionId }, (response: SocketResponse) => {
+          clearTimeout(timeout);
+          resolve(response);
+        });
       });
-    });
-  }, [socket, connectionStatus]);
+    },
+    [socket, connectionStatus]
+  );
 
-  const sendMessage = useCallback((data: {
-    sessionId: string;
-    to: string;
-    type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location';
-    content?: string;
-    mediaUrl?: string;
-    caption?: string;
-    latitude?: number;
-    longitude?: number;
-    address?: string;
-  }): Promise<SocketResponse> => {
-    return new Promise((resolve, reject) => {
-      if (!socket || connectionStatus !== 'connected') {
-        reject(new Error('Socket not connected'));
-        return;
-      }
+  const sendMessage = useCallback(
+    (data: {
+      sessionId: string;
+      to: string;
+      type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location';
+      content?: string;
+      mediaUrl?: string;
+      caption?: string;
+      latitude?: number;
+      longitude?: number;
+      address?: string;
+    }): Promise<SocketResponse> => {
+      return new Promise((resolve, reject) => {
+        if (!socket || connectionStatus !== 'connected') {
+          reject(new Error('Socket not connected'));
+          return;
+        }
 
-      const timeout = setTimeout(() => {
-        reject(new Error('Request timeout'));
-      }, 30000);
+        const timeout = setTimeout(() => {
+          reject(new Error('Request timeout'));
+        }, 30000);
 
-      socket.emit('message:send', data, (response: SocketResponse) => {
-        clearTimeout(timeout);
-        resolve(response);
+        socket.emit('message:send', data, (response: SocketResponse) => {
+          clearTimeout(timeout);
+          resolve(response);
+        });
       });
-    });
-  }, [socket, connectionStatus]);
+    },
+    [socket, connectionStatus]
+  );
 
   // Event subscription functions
-  const onQRUpdate = useCallback((callback: (data: QRUpdatePayload) => void) => {
-    if (socket) {
-      socket.on('qr:update', callback);
-      return () => socket.off('qr:update', callback);
-    }
-    return () => {};
-  }, [socket]);
+  const onQRUpdate = useCallback(
+    (callback: (data: QRUpdatePayload) => void) => {
+      if (socket) {
+        socket.on('qr:update', callback);
+        return () => socket.off('qr:update', callback);
+      }
+      return () => {};
+    },
+    [socket]
+  );
 
-  const onSessionStateChange = useCallback((callback: (data: any) => void) => {
-    if (socket) {
-      socket.on('session:state', callback);
-      return () => socket.off('session:state', callback);
-    }
-    return () => {};
-  }, [socket]);
+  const onSessionStateChange = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on('session:state', callback);
+        return () => socket.off('session:state', callback);
+      }
+      return () => {};
+    },
+    [socket]
+  );
 
-  const onMessageStatus = useCallback((callback: (data: any) => void) => {
-    if (socket) {
-      socket.on('message:status', callback);
-      return () => socket.off('message:status', callback);
-    }
-    return () => {};
-  }, [socket]);
+  const onMessageStatus = useCallback(
+    (callback: (data: any) => void) => {
+      if (socket) {
+        socket.on('message:status', callback);
+        return () => socket.off('message:status', callback);
+      }
+      return () => {};
+    },
+    [socket]
+  );
 
-  const onSessionDeleted = useCallback((callback: (data: { sessionId: string; timestamp: string }) => void) => {
-    if (socket) {
-      socket.on('session:deleted', callback);
-      return () => socket.off('session:deleted', callback);
-    }
-    return () => {};
-  }, [socket]);
+  const onSessionDeleted = useCallback(
+    (callback: (data: { sessionId: string; timestamp: string }) => void) => {
+      if (socket) {
+        socket.on('session:deleted', callback);
+        return () => socket.off('session:deleted', callback);
+      }
+      return () => {};
+    },
+    [socket]
+  );
 
-  const onError = useCallback((callback: (error: any) => void) => {
-    if (socket) {
-      socket.on('error', callback);
-      return () => socket.off('error', callback);
-    }
-    return () => {};
-  }, [socket]);
+  const onError = useCallback(
+    (callback: (error: any) => void) => {
+      if (socket) {
+        socket.on('error', callback);
+        return () => socket.off('error', callback);
+      }
+      return () => {};
+    },
+    [socket]
+  );
 
   return {
     socket,
