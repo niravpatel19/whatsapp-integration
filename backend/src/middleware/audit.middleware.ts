@@ -31,22 +31,22 @@ export const auditMiddleware = (
   return (req: Request, res: Response, next: NextFunction) => {
     // Store original res.json to intercept successful responses
     const originalJson = res.json;
-    
-    res.json = function(body: any) {
+
+    res.json = function (body: any) {
       // Only log if response is successful (2xx status codes)
       if (res.statusCode >= 200 && res.statusCode < 300) {
         // Check condition if provided
         if (options.condition && !options.condition(req, res)) {
           return originalJson.call(this, body);
         }
-        
+
         // Extract user information
         const user = (req as any).user;
         if (user) {
           // Get target ID and metadata
           const targetId = options.getTargetId ? options.getTargetId(req, res) : undefined;
           const metadata = options.getMetadata ? options.getMetadata(req, res) : undefined;
-          
+
           // Log audit event asynchronously (don't block response)
           setImmediate(async () => {
             try {
@@ -58,7 +58,7 @@ export const auditMiddleware = (
                 {
                   targetId,
                   metadata,
-                  req
+                  req,
                 }
               );
             } catch (error) {
@@ -68,10 +68,10 @@ export const auditMiddleware = (
           });
         }
       }
-      
+
       return originalJson.call(this, body);
     };
-    
+
     next();
   };
 };
@@ -92,9 +92,9 @@ export const setAuditContext = (
       action,
       targetType,
       targetId: options.getTargetId ? options.getTargetId(req) : undefined,
-      metadata: options.getMetadata ? options.getMetadata(req) : undefined
+      metadata: options.getMetadata ? options.getMetadata(req) : undefined,
     };
-    
+
     next();
   };
 };
@@ -105,11 +105,11 @@ export const setAuditContext = (
 export const logAuditEvent = async (req: Request, customMetadata?: Record<string, any>) => {
   const user = (req as any).user;
   const context = req.auditContext;
-  
+
   if (!user || !context) {
     return;
   }
-  
+
   try {
     await AuditService.logAction(
       user.userId,
@@ -119,11 +119,11 @@ export const logAuditEvent = async (req: Request, customMetadata?: Record<string
       {
         targetId: context.targetId,
         metadata: { ...context.metadata, ...customMetadata },
-        req
+        req,
       }
     );
   } catch (error) {
-    console.error('Failed to log audit event:', error);
+    // Audit logging failed - continue processing
   }
 };
 
@@ -136,14 +136,14 @@ export const auditMiddlewares = {
     getTargetId: (req) => (req as any).user?.userId,
     getMetadata: (req, res) => ({
       success: res.statusCode >= 200 && res.statusCode < 300,
-      method: 'password'
-    })
+      method: 'password',
+    }),
   }),
-  
+
   logout: auditMiddleware(AuditAction.LOGOUT, 'User', {
-    getTargetId: (req) => (req as any).user?.userId
+    getTargetId: (req) => (req as any).user?.userId,
   }),
-  
+
   // API Key management
   apiKeyGenerated: auditMiddleware(AuditAction.API_KEY_GENERATED, 'APIKey', {
     getTargetId: (req, res) => {
@@ -152,10 +152,10 @@ export const auditMiddlewares = {
       return body?.data?.keyId;
     },
     getMetadata: (req) => ({
-      label: req.body?.label
-    })
+      label: req.body?.label,
+    }),
   }),
-  
+
   // Session management
   sessionCreated: auditMiddleware(AuditAction.SESSION_CREATED, 'Session', {
     getTargetId: (req, res) => {
@@ -164,10 +164,10 @@ export const auditMiddlewares = {
       return body?.data?.sessionId;
     },
     getMetadata: (req) => ({
-      deviceName: req.body?.deviceName
-    })
+      deviceName: req.body?.deviceName,
+    }),
   }),
-  
+
   // Message sending
   messageSent: auditMiddleware(AuditAction.MESSAGE_SENT, 'Message', {
     getTargetId: (req, res) => {
@@ -177,24 +177,24 @@ export const auditMiddlewares = {
     },
     getMetadata: (req) => ({
       to: req.body?.to,
-      messageType: req.body?.type
-    })
+      messageType: req.body?.type,
+    }),
   }),
-  
+
   // Generic CRUD operations
   create: (targetType: string, getTargetId?: (req: Request, res: Response) => string | undefined) =>
     auditMiddleware(AuditAction.CREATE, targetType, { getTargetId }),
-  
+
   update: (targetType: string, getTargetId?: (req: Request, res: Response) => string | undefined) =>
-    auditMiddleware(AuditAction.UPDATE, targetType, { 
+    auditMiddleware(AuditAction.UPDATE, targetType, {
       getTargetId,
       getMetadata: (req) => ({
-        changes: req.body
-      })
+        changes: req.body,
+      }),
     }),
-  
+
   delete: (targetType: string, getTargetId?: (req: Request, res: Response) => string | undefined) =>
-    auditMiddleware(AuditAction.DELETE, targetType, { getTargetId })
+    auditMiddleware(AuditAction.DELETE, targetType, { getTargetId }),
 };
 
 /**
@@ -203,8 +203,8 @@ export const auditMiddlewares = {
 export const auditFailedAuth = (req: Request, res: Response, next: NextFunction) => {
   // Store original res.status to intercept failed auth responses
   const originalStatus = res.status;
-  
-  res.status = function(code: number) {
+
+  res.status = function (code: number) {
     if (code === 401 || code === 403) {
       // Log failed authentication attempt
       setImmediate(async () => {
@@ -218,19 +218,19 @@ export const auditFailedAuth = (req: Request, res: Response, next: NextFunction)
               metadata: {
                 success: false,
                 statusCode: code,
-                reason: code === 401 ? 'Invalid credentials' : 'Access denied'
+                reason: code === 401 ? 'Invalid credentials' : 'Access denied',
               },
-              req
+              req,
             }
           );
         } catch (error) {
-          console.error('Failed to log failed auth attempt:', error);
+          // Audit logging failed - continue processing
         }
       });
     }
-    
+
     return originalStatus.call(this, code);
   };
-  
+
   next();
 };

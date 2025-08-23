@@ -12,13 +12,11 @@ import {
   Select,
   message,
   Typography,
-  Spin,
   Alert,
   InputNumber,
   Divider,
 } from 'antd';
 import {
-  PlusOutlined,
   ReloadOutlined,
   SendOutlined,
   FileOutlined,
@@ -27,10 +25,9 @@ import {
   VideoCameraOutlined,
   EnvironmentOutlined,
   PhoneOutlined,
-  HistoryOutlined,
 } from '@ant-design/icons';
 import { useSocket } from '../hooks/useSocket';
-import api, { messagesApi, sessionsApi, type Message, type Session } from '../services/api';
+import { messagesApi, sessionsApi, type Message, type Session } from '../services/api';
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
@@ -374,7 +371,7 @@ const MessagesPage: React.FC = () => {
                 rules={[{ required: true, message: 'Please select message type' }]}
               >
                 <Select
-                  onChange={(value) => {
+                  onChange={() => {
                     // Reset form fields when type changes
                     form.setFieldsValue({
                       content: undefined,

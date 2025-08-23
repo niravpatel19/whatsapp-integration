@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -71,7 +71,7 @@ export const useSocket = (): UseSocketReturn => {
     }
 
     // Create socket connection
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+    const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:3001';
     const newSocket = io(socketUrl, {
       auth: {
         token,

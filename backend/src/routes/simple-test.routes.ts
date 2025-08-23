@@ -68,7 +68,7 @@ export const initializeSimpleTest = (socketServer: SocketIOServer) => {
 };
 
 async function startSession(whatsappId: string, socket: any) {
-  console.log(`Creating new session for ${whatsappId}`);
+  
   whatsappSessions[whatsappId] = { client: null, status: 'creating', qr: null };
 
   try {
@@ -88,13 +88,13 @@ async function startSession(whatsappId: string, socket: any) {
     const client = await create({
       session: whatsappId,
       catchQR: (qrCode: string, asciiQR: string, attempts: number) => {
-        console.log(`QR code for ${whatsappId}, attempt ${attempts}`);
+        
         whatsappSessions[whatsappId].qr = qrCode;
         whatsappSessions[whatsappId].status = 'qr';
         socket.emit('whatsapp_qr', { qrCode, attempts });
       },
       statusFind: (status: string, session: string) => {
-        console.log(`Status for ${session}: ${status}`);
+        
         whatsappSessions[whatsappId].status = status;
         socket.emit('whatsapp_status', { status });
       },
@@ -106,13 +106,13 @@ async function startSession(whatsappId: string, socket: any) {
       }
     });
 
-    console.log(`Session created successfully for ${whatsappId}`);
+    
     whatsappSessions[whatsappId].client = client;
     whatsappSessions[whatsappId].status = 'connected';
     
     // Setup client event listeners
     client.onStateChange((state: any) => {
-      console.log(`State change for ${whatsappId}: ${state}`);
+      
       if (whatsappSessions[whatsappId]) {
         whatsappSessions[whatsappId].status = state;
       }
@@ -129,7 +129,7 @@ async function startSession(whatsappId: string, socket: any) {
     socket.emit('whatsapp_status', { status: 'connected' });
 
   } catch (err: any) {
-    console.error(`Error creating session for ${whatsappId}:`, err);
+    
     delete whatsappSessions[whatsappId];
     socket.emit('whatsapp_error', { error: 'Failed to create session: ' + err.message });
   }

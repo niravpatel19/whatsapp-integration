@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "nodemon src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "build:prod": "NODE_ENV=production tsc",
+    "start": "NODE_ENV=production node dist/server.js",
+    "start:dev": "NODE_ENV=development node dist/server.js",
     "verify-env": "node verify-env.js",
     "create-user": "ts-node -r tsconfig-paths/register src/scripts/create-default-user.ts",
     "whatsapp:enable": "ts-node src/scripts/toggle-whatsapp.ts real",

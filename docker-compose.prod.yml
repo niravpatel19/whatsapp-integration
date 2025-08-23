@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # MongoDB database
+  mongodb:
+    image: mongo:5.0
+    container_name: whatsapp-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: whatsapp-integration-prod
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - whatsapp-network
+
+  # Redis cache
+  redis:
+    image: redis:6-alpine
+    container_name: whatsapp-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - whatsapp-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: whatsapp-backend
+    restart: unless-stopped
+    ports:
+      - "7811:7811"
+    environment:
+      - NODE_ENV=production
+      - PORT=7811
+      - HOST=0.0.0.0
+      - MONGODB_URI=mongodb://mongodb:27017/whatsapp-integration-prod
+      - REDIS_URL=redis://redis:6379
+      - CORS_ORIGIN=http://82.29.198.95:7810
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+      - JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-this-in-production
+      - JWT_EXPIRES_IN=30d
+      - JWT_REFRESH_EXPIRES_IN=90d
+      - BCRYPT_ROUNDS=12
+      - SESSION_SECRET=your-super-secret-session-key-change-this-in-production
+      - WHATSAPP_MODE=real
+      - WHATSAPP_SESSION_PATH=./sessions
+      - LOG_LEVEL=info
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=100
+    volumes:
+      - ./backend/sessions:/app/sessions
+      - ./backend/logs:/app/logs
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - whatsapp-network
+
+  # Frontend application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: whatsapp-frontend
+    restart: unless-stopped
+    ports:
+      - "7810:7810"
+    environment:
+      - VITE_API_BASE_URL=http://82.29.198.95:7811/api/v1
+      - VITE_SOCKET_URL=http://82.29.198.95:7811
+      - VITE_APP_NAME=WhatsApp Integration
+      - VITE_APP_VERSION=1.0.0
+      - VITE_ENABLE_DEBUG=false
+    depends_on:
+      - backend
+    networks:
+      - whatsapp-network
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  whatsapp-network:
+    driver: bridge 

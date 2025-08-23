@@ -16,10 +16,18 @@
     "docker:dev": "docker-compose up",
     "docker:prod": "docker-compose -f docker-compose.prod.yml up"
   },
-  "keywords": ["whatsapp", "integration", "wppconnect", "api", "multi-tenant"],
+  "keywords": [
+    "whatsapp",
+    "integration",
+    "wppconnect",
+    "api",
+    "multi-tenant"
+  ],
   "author": "Dev Saeculum",
   "license": "MIT",
   "devDependencies": {
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "concurrently": "^8.2.2"
   }
 }

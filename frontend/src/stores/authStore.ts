@@ -168,7 +168,6 @@ export const useAuthStore = create<AuthStore>()(
           }
         } catch (error) {
           // If refresh fails, logout user
-          console.error('Token refresh failed:', error);
           get().logout();
           throw error;
         }
@@ -193,15 +192,12 @@ export const useAuthStore = create<AuthStore>()(
               throw new Error('Token validation failed');
             }
           } catch (error) {
-            console.log('Token validation failed, attempting refresh...');
-
             // Token might be expired, try to refresh if we have refresh token
             if (refreshToken) {
               try {
                 await get().refreshTokens();
                 set({ isLoading: false });
               } catch (refreshError) {
-                console.error('Token refresh failed during initialization:', refreshError);
                 // Clear invalid tokens and set unauthenticated state
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('refresh_token');

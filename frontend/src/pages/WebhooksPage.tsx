@@ -20,7 +20,7 @@ import {
   Col,
   Badge,
   Timeline,
-  Progress
+  Progress,
 } from 'antd';
 import {
   PlusOutlined,
@@ -31,10 +31,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   InfoCircleOutlined,
-  ArrowLeftOutlined
+  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/services/api';
 
 const { Content } = Layout;
@@ -90,7 +89,6 @@ const WebhooksPage: React.FC = () => {
   const [selectedWebhookLogs, setSelectedWebhookLogs] = useState<DeliveryLog[]>([]);
   const [testingWebhook, setTestingWebhook] = useState<string | null>(null);
   const [form] = Form.useForm();
-  const { user } = useAuthStore();
 
   // Load webhooks and event types
   useEffect(() => {
@@ -104,7 +102,9 @@ const WebhooksPage: React.FC = () => {
       const response = await api.get('/webhooks');
       setWebhooks(response.data.webhooks || []);
     } catch (error: any) {
-      message.error('Failed to load webhooks: ' + (error.response?.data?.error?.message || error.message));
+      message.error(
+        'Failed to load webhooks: ' + (error.response?.data?.error?.message || error.message)
+      );
     } finally {
       setLoading(false);
     }
@@ -124,7 +124,7 @@ const WebhooksPage: React.FC = () => {
     form.resetFields();
     form.setFieldsValue({
       isActive: true,
-      eventTypes: []
+      eventTypes: [],
     });
     setModalVisible(true);
   };
@@ -135,7 +135,7 @@ const WebhooksPage: React.FC = () => {
       url: webhook.url,
       description: webhook.description,
       isActive: webhook.isActive,
-      eventTypes: webhook.eventTypes
+      eventTypes: webhook.eventTypes,
     });
     setModalVisible(true);
   };
@@ -151,11 +151,13 @@ const WebhooksPage: React.FC = () => {
         await api.post('/webhooks', values);
         message.success('Webhook created successfully');
       }
-      
+
       setModalVisible(false);
       loadWebhooks();
     } catch (error: any) {
-      message.error('Failed to save webhook: ' + (error.response?.data?.error?.message || error.message));
+      message.error(
+        'Failed to save webhook: ' + (error.response?.data?.error?.message || error.message)
+      );
     }
   };
 
@@ -165,7 +167,9 @@ const WebhooksPage: React.FC = () => {
       message.success('Webhook deleted successfully');
       loadWebhooks();
     } catch (error: any) {
-      message.error('Failed to delete webhook: ' + (error.response?.data?.error?.message || error.message));
+      message.error(
+        'Failed to delete webhook: ' + (error.response?.data?.error?.message || error.message)
+      );
     }
   };
 
@@ -176,21 +180,25 @@ const WebhooksPage: React.FC = () => {
         payload: {
           test: true,
           timestamp: new Date().toISOString(),
-          message: 'This is a test webhook delivery from WhatsApp Integration'
-        }
+          message: 'This is a test webhook delivery from WhatsApp Integration',
+        },
       });
-      
+
       const testResult = response.data.test;
       if (testResult.success) {
-        message.success(`Webhook test successful! Response: ${testResult.responseCode} (${testResult.responseTime}ms)`);
+        message.success(
+          `Webhook test successful! Response: ${testResult.responseCode} (${testResult.responseTime}ms)`
+        );
       } else {
         message.error(`Webhook test failed: ${testResult.error || 'Unknown error'}`);
       }
-      
+
       // Refresh webhooks to show updated stats
       loadWebhooks();
     } catch (error: any) {
-      message.error('Failed to test webhook: ' + (error.response?.data?.error?.message || error.message));
+      message.error(
+        'Failed to test webhook: ' + (error.response?.data?.error?.message || error.message)
+      );
     } finally {
       setTestingWebhook(null);
     }
@@ -202,7 +210,9 @@ const WebhooksPage: React.FC = () => {
       setSelectedWebhookLogs(response.data.logs || []);
       setLogsModalVisible(true);
     } catch (error: any) {
-      message.error('Failed to load webhook logs: ' + (error.response?.data?.error?.message || error.message));
+      message.error(
+        'Failed to load webhook logs: ' + (error.response?.data?.error?.message || error.message)
+      );
     }
   };
 
@@ -212,7 +222,9 @@ const WebhooksPage: React.FC = () => {
       message.success('Webhook retry initiated');
       loadWebhooks();
     } catch (error: any) {
-      message.error('Failed to retry webhook: ' + (error.response?.data?.error?.message || error.message));
+      message.error(
+        'Failed to retry webhook: ' + (error.response?.data?.error?.message || error.message)
+      );
     }
   };
 
@@ -220,15 +232,15 @@ const WebhooksPage: React.FC = () => {
     if (!webhook.isActive) {
       return <Badge status="default" text="Inactive" />;
     }
-    
+
     if (webhook.health) {
       return <Badge status="success" text="Healthy" />;
     }
-    
+
     if (webhook.retryCount > 0) {
       return <Badge status="warning" text="Retrying" />;
     }
-    
+
     return <Badge status="error" text="Unhealthy" />;
   };
 
@@ -263,14 +275,10 @@ const WebhooksPage: React.FC = () => {
       key: 'eventTypes',
       render: (eventTypes: string[]) => (
         <Space wrap>
-          {eventTypes.slice(0, 3).map(type => (
-            <Tag key={type}>
-              {type.replace(/_/g, ' ')}
-            </Tag>
+          {eventTypes.slice(0, 3).map((type) => (
+            <Tag key={type}>{type.replace(/_/g, ' ')}</Tag>
           ))}
-          {eventTypes.length > 3 && (
-            <Tag>+{eventTypes.length - 3} more</Tag>
-          )}
+          {eventTypes.length > 3 && <Tag>+{eventTypes.length - 3} more</Tag>}
         </Space>
       ),
     },
@@ -347,11 +355,7 @@ const WebhooksPage: React.FC = () => {
             okText="Yes"
             cancelText="No"
           >
-            <Button
-              icon={<DeleteOutlined />}
-              size="small"
-              danger
-            />
+            <Button icon={<DeleteOutlined />} size="small" danger />
           </Popconfirm>
         </Space>
       ),
@@ -379,9 +383,10 @@ const WebhooksPage: React.FC = () => {
     }
   );
 
-  const overallSuccessRate = overallStats.totalDeliveries > 0
-    ? (overallStats.successfulDeliveries / overallStats.totalDeliveries) * 100
-    : 0;
+  const overallSuccessRate =
+    overallStats.totalDeliveries > 0
+      ? (overallStats.successfulDeliveries / overallStats.totalDeliveries) * 100
+      : 0;
 
   return (
     <Layout>
@@ -399,17 +404,12 @@ const WebhooksPage: React.FC = () => {
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
               Back to Dashboard
             </Button>
-            <Button onClick={() => navigate('/sessions')}>
-              Sessions
-            </Button>
-            <Button onClick={() => navigate('/messages')}>
-              Messages
-            </Button>
+            <Button onClick={() => navigate('/sessions')}>Sessions</Button>
+            <Button onClick={() => navigate('/messages')}>Messages</Button>
           </Space>
         </div>
       </Layout.Header>
       <Content style={{ padding: '24px' }}>
-
         {/* Overview Stats */}
         <Row gutter={16} style={{ marginBottom: '24px' }}>
           <Col span={6}>
@@ -456,11 +456,7 @@ const WebhooksPage: React.FC = () => {
         <Card
           title="Webhooks"
           extra={
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleCreateWebhook}
-            >
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateWebhook}>
               Create Webhook
             </Button>
           }
@@ -474,8 +470,7 @@ const WebhooksPage: React.FC = () => {
               pageSize: 10,
               showSizeChanger: true,
               showQuickJumper: true,
-              showTotal: (total, range) =>
-                `${range[0]}-${range[1]} of ${total} webhooks`,
+              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} webhooks`,
             }}
           />
         </Card>
@@ -488,11 +483,7 @@ const WebhooksPage: React.FC = () => {
           footer={null}
           width={600}
         >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={handleSubmit}
-          >
+          <Form form={form} layout="vertical" onFinish={handleSubmit}>
             <Form.Item
               name="url"
               label="Webhook URL"
@@ -512,29 +503,21 @@ const WebhooksPage: React.FC = () => {
               <Input placeholder="https://your-domain.com/webhook" />
             </Form.Item>
 
-            <Form.Item
-              name="description"
-              label="Description"
-            >
-              <Input.TextArea
-                placeholder="Optional description for this webhook"
-                rows={3}
-              />
+            <Form.Item name="description" label="Description">
+              <Input.TextArea placeholder="Optional description for this webhook" rows={3} />
             </Form.Item>
 
             <Form.Item
               name="eventTypes"
               label="Event Types"
-              rules={[
-                { required: true, message: 'Please select at least one event type' },
-              ]}
+              rules={[{ required: true, message: 'Please select at least one event type' }]}
             >
               <Select
                 mode="multiple"
                 placeholder="Select event types to subscribe to"
                 optionLabelProp="label"
               >
-                {eventTypes.map(eventType => (
+                {eventTypes.map((eventType) => (
                   <Option
                     key={eventType.type}
                     value={eventType.type}
@@ -542,20 +525,14 @@ const WebhooksPage: React.FC = () => {
                   >
                     <div>
                       <div>{eventType.type.replace(/_/g, ' ')}</div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>
-                        {eventType.description}
-                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>{eventType.description}</div>
                     </div>
                   </Option>
                 ))}
               </Select>
             </Form.Item>
 
-            <Form.Item
-              name="isActive"
-              label="Status"
-              valuePropName="checked"
-            >
+            <Form.Item name="isActive" label="Status" valuePropName="checked">
               <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
             </Form.Item>
 
@@ -564,9 +541,7 @@ const WebhooksPage: React.FC = () => {
                 <Button type="primary" htmlType="submit">
                   {editingWebhook ? 'Update' : 'Create'} Webhook
                 </Button>
-                <Button onClick={() => setModalVisible(false)}>
-                  Cancel
-                </Button>
+                <Button onClick={() => setModalVisible(false)}>Cancel</Button>
               </Space>
             </Form.Item>
           </Form>
@@ -595,25 +570,16 @@ const WebhooksPage: React.FC = () => {
               >
                 <div>
                   <div style={{ marginBottom: '8px' }}>
-                    <Text strong>
-                      {new Date(log.timestamp).toLocaleString()}
-                    </Text>
-                    <Tag
-                      color={log.success ? 'success' : 'error'}
-                      style={{ marginLeft: '8px' }}
-                    >
+                    <Text strong>{new Date(log.timestamp).toLocaleString()}</Text>
+                    <Tag color={log.success ? 'success' : 'error'} style={{ marginLeft: '8px' }}>
                       {log.success ? 'Success' : 'Failed'}
                     </Tag>
                     {log.responseCode && (
-                      <Tag style={{ marginLeft: '4px' }}>
-                        {log.responseCode}
-                      </Tag>
+                      <Tag style={{ marginLeft: '4px' }}>{log.responseCode}</Tag>
                     )}
                   </div>
                   <div>
-                    <Text type="secondary">
-                      Response time: {log.responseTime}ms
-                    </Text>
+                    <Text type="secondary">Response time: {log.responseTime}ms</Text>
                     {log.retryCount > 0 && (
                       <Text type="secondary" style={{ marginLeft: '16px' }}>
                         Retry #{log.retryCount}

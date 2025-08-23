@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuditService } from '../services/audit.service';
 import { AuditAction } from '../types/database.types';
+import { logger } from '../utils/logger';
 
 export class AuditController {
   /**
@@ -16,16 +17,16 @@ export class AuditController {
         startDate,
         endDate,
         limit = 100,
-        skip = 0
+        skip = 0,
       } = req.query;
 
       // Only allow users to see their own audit logs unless they're admin
       const userId = (req as any).user?.userId;
-      
+
       const filters: any = {
         userId, // Scope to current user
         limit: Number(limit),
-        skip: Number(skip)
+        skip: Number(skip),
       };
 
       if (actor) filters.actor = actor as string;
@@ -45,18 +46,18 @@ export class AuditController {
             total: result.total,
             limit: Number(limit),
             skip: Number(skip),
-            hasMore: result.total > Number(skip) + result.logs.length
-          }
-        }
+            hasMore: result.total > Number(skip) + result.logs.length,
+          },
+        },
       });
     } catch (error) {
-      console.error('Error getting audit trail:', error);
+      logger.error('Error getting audit trail:', error);
       res.status(500).json({
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: 'Failed to retrieve audit trail'
-        }
+          message: 'Failed to retrieve audit trail',
+        },
       });
     }
   }
@@ -87,13 +88,13 @@ export class AuditController {
 
       res.send(exportData);
     } catch (error) {
-      console.error('Error exporting audit data:', error);
+      logger.error('Error exporting audit data:', error);
       res.status(500).json({
         success: false,
         error: {
           code: 'EXPORT_FAILED',
-          message: 'Failed to export audit data'
-        }
+          message: 'Failed to export audit data',
+        },
       });
     }
   }
@@ -113,29 +114,26 @@ export class AuditController {
           success: false,
           error: {
             code: 'FORBIDDEN',
-            message: 'You can only view your own activity patterns'
-          }
+            message: 'You can only view your own activity patterns',
+          },
         });
         return;
       }
 
-      const activityPatterns = await AuditService.getUserActivityPatterns(
-        userId,
-        Number(days)
-      );
+      const activityPatterns = await AuditService.getUserActivityPatterns(userId, Number(days));
 
       res.json({
         success: true,
-        data: activityPatterns
+        data: activityPatterns,
       });
     } catch (error) {
-      console.error('Error getting user activity:', error);
+      logger.error('Error getting user activity:', error);
       res.status(500).json({
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: 'Failed to retrieve user activity patterns'
-        }
+          message: 'Failed to retrieve user activity patterns',
+        },
       });
     }
   }
@@ -147,26 +145,24 @@ export class AuditController {
     try {
       const { timeWindowHours = 24 } = req.query;
 
-      const securityEvents = await AuditService.detectSecurityEvents(
-        Number(timeWindowHours)
-      );
+      const securityEvents = await AuditService.detectSecurityEvents(Number(timeWindowHours));
 
       res.json({
         success: true,
         data: {
           events: securityEvents,
           timeWindow: `${timeWindowHours} hours`,
-          generatedAt: new Date().toISOString()
-        }
+          generatedAt: new Date().toISOString(),
+        },
       });
     } catch (error) {
-      console.error('Error detecting security events:', error);
+      logger.error('Error detecting security events:', error);
       res.status(500).json({
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: 'Failed to detect security events'
-        }
+          message: 'Failed to detect security events',
+        },
       });
     }
   }
@@ -191,17 +187,17 @@ export class AuditController {
         success: true,
         data: {
           ...integrityResult,
-          verifiedAt: new Date().toISOString()
-        }
+          verifiedAt: new Date().toISOString(),
+        },
       });
     } catch (error) {
-      console.error('Error verifying integrity:', error);
+      logger.error('Error verifying integrity:', error);
       res.status(500).json({
         success: false,
         error: {
           code: 'INTEGRITY_CHECK_FAILED',
-          message: 'Failed to verify audit log integrity'
-        }
+          message: 'Failed to verify audit log integrity',
+        },
       });
     }
   }
@@ -215,17 +211,19 @@ export class AuditController {
       const currentUserId = (req as any).user?.userId;
 
       // If userId is specified, ensure user can only access their own data
-      const targetUserId = userId ? 
-        (userId === currentUserId ? userId as string : null) : 
-        currentUserId;
+      const targetUserId = userId
+        ? userId === currentUserId
+          ? (userId as string)
+          : null
+        : currentUserId;
 
       if (userId && userId !== currentUserId) {
         res.status(403).json({
           success: false,
           error: {
             code: 'FORBIDDEN',
-            message: 'You can only generate reports for your own data'
-          }
+            message: 'You can only generate reports for your own data',
+          },
         });
         return;
       }
@@ -246,17 +244,17 @@ export class AuditController {
         data: {
           ...complianceReport,
           generatedAt: new Date().toISOString(),
-          generatedBy: (req as any).user?.email || 'Unknown'
-        }
+          generatedBy: (req as any).user?.email || 'Unknown',
+        },
       });
     } catch (error) {
-      console.error('Error generating compliance report:', error);
+      logger.error('Error generating compliance report:', error);
       res.status(500).json({
         success: false,
         error: {
           code: 'REPORT_GENERATION_FAILED',
-          message: 'Failed to generate compliance report'
-        }
+          message: 'Failed to generate compliance report',
+        },
       });
     }
   }
@@ -282,9 +280,9 @@ export class AuditController {
             operation: 'cleanup',
             retentionYears: Number(retentionYears),
             deletedCount: cleanupResult.deletedCount,
-            compressedCount: cleanupResult.compressedCount
+            compressedCount: cleanupResult.compressedCount,
           },
-          req
+          req,
         }
       );
 
@@ -293,17 +291,17 @@ export class AuditController {
         data: {
           ...cleanupResult,
           retentionYears: Number(retentionYears),
-          cleanupAt: new Date().toISOString()
-        }
+          cleanupAt: new Date().toISOString(),
+        },
       });
     } catch (error) {
-      console.error('Error cleaning up audit logs:', error);
+      logger.error('Error cleaning up audit logs:', error);
       res.status(500).json({
         success: false,
         error: {
           code: 'CLEANUP_FAILED',
-          message: 'Failed to cleanup old audit logs'
-        }
+          message: 'Failed to cleanup old audit logs',
+        },
       });
     }
   }

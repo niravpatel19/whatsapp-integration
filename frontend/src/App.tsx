@@ -64,7 +64,7 @@ const App: React.FC = () => {
       try {
         await initializeAuth();
       } catch (error) {
-        console.error('Failed to initialize authentication:', error);
+        // Authentication initialization failed
       }
     };
 

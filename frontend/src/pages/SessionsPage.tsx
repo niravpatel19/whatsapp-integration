@@ -27,8 +27,8 @@ import {
   ExclamationCircleOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
-import { useSocket, type QRUpdatePayload } from '../hooks/useSocket';
-import api, { sessionsApi, type Session } from '../services/api';
+import { useSocket } from '../hooks/useSocket';
+import { sessionsApi, type Session } from '../services/api';
 import { io } from 'socket.io-client';
 import { useAuthStore } from '../stores/authStore';
 
@@ -51,16 +51,7 @@ const SessionsPage: React.FC = () => {
   const [qrCountdown, setQrCountdown] = useState<number>(0);
   const [form] = Form.useForm();
 
-  const {
-    connectionStatus,
-    createSession,
-    deleteSession,
-    refreshQR,
-    onQRUpdate,
-    onSessionStateChange,
-    onSessionDeleted,
-    onError,
-  } = useSocket();
+  const { connectionStatus, createSession, deleteSession, refreshQR } = useSocket();
 
   // Load sessions with better error handling
   const loadSessions = async () => {
@@ -68,15 +59,12 @@ const SessionsPage: React.FC = () => {
       setLoading(true);
       const response = await sessionsApi.list();
       if (response.success && response.data) {
-        console.log('📋 Loaded sessions:', response.data.sessions);
         setSessions(response.data.sessions || []);
       } else {
-        console.error('❌ Failed to load sessions:', response);
         message.error('Failed to load sessions: ' + (response.error?.message || 'Unknown error'));
         setSessions([]);
       }
     } catch (error: any) {
-      console.error('❌ Exception loading sessions:', error);
       message.error('Failed to load sessions: ' + (error.message || 'Network error'));
       setSessions([]);
     } finally {
@@ -146,7 +134,6 @@ const SessionsPage: React.FC = () => {
 
       // Handle DISCONNECTED sessions - need to reconnect first
       if (session.status === 'DISCONNECTED') {
-        console.log('🔄 Session is DISCONNECTED, initiating reconnection...');
         message.loading('Reconnecting session...', 1);
 
         try {
@@ -156,7 +143,6 @@ const SessionsPage: React.FC = () => {
           // Socket.IO will handle the QR update
           return;
         } catch (reconnectError: any) {
-          console.error('❌ Failed to reconnect:', reconnectError);
           message.error('Failed to reconnect: ' + reconnectError.message);
           return;
         }
@@ -178,7 +164,7 @@ const SessionsPage: React.FC = () => {
           return;
         }
       } catch (getQRError) {
-        console.log('No existing QR found, will generate new one');
+        // No existing QR found, will generate new one
       }
 
       // No QR found, request refresh and wait for Socket.IO event
@@ -191,17 +177,14 @@ const SessionsPage: React.FC = () => {
 
   // IMPROVED Socket.IO connection - based on working demo pattern
   useEffect(() => {
-    console.log('🔌 Setting up improved Socket.IO connection');
     const { token } = useAuthStore.getState();
 
     if (!token) {
-      console.warn('⚠️ No token available for Socket.IO connection');
       return;
     }
 
     const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:3001';
     let directSocket: any = null;
-    let isConnected = false;
     let notificationShown = new Set<string>(); // Track shown notifications
 
     try {
@@ -216,21 +199,15 @@ const SessionsPage: React.FC = () => {
       });
 
       directSocket.on('connect', () => {
-        console.log('🟢 Socket.IO connected:', directSocket.id);
-        isConnected = true;
         notificationShown.clear(); // Reset notification tracking on new connection
       });
 
-      directSocket.on('connect_error', (error: any) => {
-        console.error('🔴 Socket.IO connection error:', error);
-        isConnected = false;
+      directSocket.on('connect_error', () => {
+        // Connection error handled by reconnection logic
       });
 
       directSocket.on('qr:update', (data: any) => {
-        console.log('🔥 QR Update received:', data);
-
         if (!data || !data.sessionId) {
-          console.warn('⚠️ Invalid QR update data:', data);
           return;
         }
 
@@ -252,11 +229,9 @@ const SessionsPage: React.FC = () => {
           // Check if this is a NEW session that we just created but isn't in the list yet
           const existingSession = prevSessions.find((s) => s.sessionId === data.sessionId);
           if (!existingSession) {
-            console.log('🆕 New session QR received, refreshing session list...');
             // Refresh the sessions list to get the new session, then auto-open QR
             setTimeout(() => {
               loadSessions().then(() => {
-                console.log('🚀 Auto-opening QR modal for new session:', data.sessionId);
                 // Find the session after refresh
                 setSessions((currentSessions) => {
                   const newSession = currentSessions.find((s) => s.sessionId === data.sessionId);
@@ -279,8 +254,6 @@ const SessionsPage: React.FC = () => {
             // Existing session - auto-open QR modal if not already open
             const session = updatedSessions.find((s) => s.sessionId === data.sessionId);
             if (session && session.qrData && !qrModalVisible) {
-              console.log('🚀 Auto-opening QR modal for existing session:', session.sessionId);
-
               // Use setTimeout to avoid state updates during render
               setTimeout(() => {
                 setSelectedSession(session);
@@ -295,10 +268,7 @@ const SessionsPage: React.FC = () => {
       });
 
       directSocket.on('session:state', (data: any) => {
-        console.log('🔄 Session state change:', data);
-
         if (!data || !data.sessionId) {
-          console.warn('⚠️ Invalid session state data:', data);
           return;
         }
 
@@ -317,18 +287,11 @@ const SessionsPage: React.FC = () => {
 
         // Auto-close QR modal when session becomes CONNECTED (prevent duplicate notifications)
         if (data.status === 'CONNECTED') {
-          console.log('📱 Session connected, checking if QR modal should close:', {
-            connectedSessionId: data.sessionId,
-            selectedSessionId: selectedSession?.sessionId,
-            modalVisible: qrModalVisible,
-          });
-
           const notificationKey = `connected-${data.sessionId}`;
           if (!notificationShown.has(notificationKey)) {
             notificationShown.add(notificationKey);
 
             if (selectedSession?.sessionId === data.sessionId && qrModalVisible) {
-              console.log('✅ Auto-closing QR modal for connected session');
               setTimeout(() => {
                 message.success('WhatsApp connected successfully!');
                 setQrModalVisible(false);
@@ -342,27 +305,23 @@ const SessionsPage: React.FC = () => {
         }
       });
 
-      directSocket.on('disconnect', (reason: string) => {
-        console.log('🔴 Socket.IO disconnected:', reason);
-        isConnected = false;
+      directSocket.on('disconnect', () => {
         notificationShown.clear();
       });
 
-      directSocket.on('error', (error: any) => {
-        console.error('🔴 Socket.IO error:', error);
-        isConnected = false;
+      directSocket.on('error', () => {
+        // Error handled by reconnection logic
       });
     } catch (socketError) {
-      console.error('🔴 Failed to create Socket.IO connection:', socketError);
+      // Socket connection failed, handled by reconnection logic
     }
 
     return () => {
-      console.log('🧹 Cleaning up Socket.IO connection');
       if (directSocket) {
         try {
           directSocket.disconnect();
         } catch (cleanupError) {
-          console.error('Error during socket cleanup:', cleanupError);
+          // Cleanup error ignored
         }
       }
     };
@@ -706,7 +665,6 @@ const SessionsPage: React.FC = () => {
                       backgroundColor: 'white',
                     }}
                     onError={(e) => {
-                      console.error('QR Code image failed to load');
                       e.currentTarget.style.display = 'none';
                     }}
                   />

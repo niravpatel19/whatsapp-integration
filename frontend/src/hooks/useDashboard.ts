@@ -37,13 +37,13 @@ export const useDashboard = () => {
       const [sessionsResponse, messagesResponse, eventsResponse] = await Promise.all([
         api.get('/sessions'),
         api.get('/messages/stats'),
-        api.get('/events?limit=10')
+        api.get('/events?limit=10'),
       ]);
 
       // Process sessions data
       const sessions = sessionsResponse.data.data.sessions || [];
       const totalSessions = sessions.length;
-      const activeSessions = sessions.filter((s: any) => 
+      const activeSessions = sessions.filter((s: any) =>
         ['PENDING', 'QR', 'CONNECTED'].includes(s.status)
       ).length;
       const connectedSessions = sessions.filter((s: any) => s.status === 'CONNECTED').length;
@@ -63,7 +63,7 @@ export const useDashboard = () => {
         type: event.type,
         message: formatEventMessage(event),
         timestamp: formatTimestamp(event.createdAt),
-        createdAt: event.createdAt
+        createdAt: event.createdAt,
       }));
 
       setData({
@@ -73,13 +73,11 @@ export const useDashboard = () => {
           connectedSessions,
           totalMessages,
           messagesThisMonth,
-          deliveryRate
+          deliveryRate,
         },
-        recentActivity
+        recentActivity,
       });
-
     } catch (err: any) {
-      console.error('Failed to fetch dashboard data:', err);
       setError(err.response?.data?.error?.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
