@@ -18,10 +18,20 @@ export interface IWPPConnectManager {
   ): Promise<any>;
   sendAudioMessage(sessionId: string, to: string, audioUrl: string): Promise<any>;
   sendVideoMessage(sessionId: string, to: string, videoUrl: string, caption?: string): Promise<any>;
-  sendLocationMessage(sessionId: string, to: string, latitude: number, longitude: number, address?: string): Promise<any>;
+  sendLocationMessage(
+    sessionId: string,
+    to: string,
+    latitude: number,
+    longitude: number,
+    address?: string
+  ): Promise<any>;
   refreshQR(sessionId: string): Promise<void>;
   getClientInfo(sessionId: string): any;
   reconnectClient(sessionId: string): Promise<void>;
+  // New methods for improved session management
+  getQRData(sessionId: string): { qrData: string; expiresAt: Date; attempts: number } | null;
+  isSessionReady(sessionId: string): boolean;
+  getSessionStatus(sessionId: string): string | null;
 }
 
 /**

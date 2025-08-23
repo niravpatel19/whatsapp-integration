@@ -26,18 +26,105 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
+// Flag to prevent multiple refresh attempts
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: Function; reject: Function }> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else {
+      resolve(token);
+    }
+  });
+
+  failedQueue = [];
+};
+
+// Response interceptor for error handling with token refresh
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
   },
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // If we're already refreshing, queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          })
+          .catch((err) => {
+            return Promise.reject(err);
+          });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      const refreshToken = localStorage.getItem('refresh_token');
+
+      if (refreshToken) {
+        try {
+          // Try to refresh the token
+          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+            refreshToken: refreshToken,
+          });
+
+          if (response.data.success && response.data.data) {
+            const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+
+            // Update tokens in localStorage
+            localStorage.setItem('auth_token', accessToken);
+            localStorage.setItem('refresh_token', newRefreshToken);
+
+            // Update the original request with new token
+            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
+            // Process the queue with the new token
+            processQueue(null, accessToken);
+
+            isRefreshing = false;
+
+            // Retry the original request
+            return api(originalRequest);
+          } else {
+            throw new Error('Token refresh failed');
+          }
+        } catch (refreshError) {
+          // Token refresh failed - logout user
+          processQueue(refreshError, null);
+          isRefreshing = false;
+
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('refresh_token');
+
+          // Only redirect if not already on login page
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+
+          return Promise.reject(refreshError);
+        }
+      } else {
+        // No refresh token - logout user
+        isRefreshing = false;
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
+
+        // Only redirect if not already on login page
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      }
     }
+
     return Promise.reject(error);
   }
 );
@@ -106,12 +193,22 @@ export interface QREvent {
 
 // Auth API
 export const authApi = {
-  login: async (email: string, password: string, totpCode?: string): Promise<ApiResponse<{ user: User; tokens: { accessToken: string; refreshToken: string } }>> => {
+  login: async (
+    email: string,
+    password: string,
+    totpCode?: string
+  ): Promise<
+    ApiResponse<{ user: User; tokens: { accessToken: string; refreshToken: string } }>
+  > => {
     const response = await api.post('/auth/login', { email, password, totpCode });
     return response.data;
   },
 
-  register: async (email: string, password: string, name: string): Promise<ApiResponse<{ user: User }>> => {
+  register: async (
+    email: string,
+    password: string,
+    name: string
+  ): Promise<ApiResponse<{ user: User }>> => {
     const response = await api.post('/auth/register', { email, password, name });
     return response.data;
   },
@@ -121,7 +218,9 @@ export const authApi = {
     return response.data;
   },
 
-  refreshToken: async (refreshToken: string): Promise<ApiResponse<{ accessToken: string; refreshToken: string }>> => {
+  refreshToken: async (
+    refreshToken: string
+  ): Promise<ApiResponse<{ accessToken: string; refreshToken: string }>> => {
     const response = await api.post('/auth/refresh', { refreshToken });
     return response.data;
   },
@@ -149,7 +248,9 @@ export const twoFAApi = {
     return response.data;
   },
 
-  setup: async (): Promise<ApiResponse<{ secret: string; qrCode: string; backupCodes: string[] }>> => {
+  setup: async (): Promise<
+    ApiResponse<{ secret: string; qrCode: string; backupCodes: string[] }>
+  > => {
     const response = await api.post('/auth/2fa/setup');
     return response.data;
   },
@@ -169,7 +270,12 @@ export const twoFAApi = {
     return response.data;
   },
 
-  recover: async (email: string, backupCode: string): Promise<ApiResponse<{ user: User; tokens: { accessToken: string; refreshToken: string } }>> => {
+  recover: async (
+    email: string,
+    backupCode: string
+  ): Promise<
+    ApiResponse<{ user: User; tokens: { accessToken: string; refreshToken: string } }>
+  > => {
     const response = await api.post('/auth/2fa/recover', { email, backupCode });
     return response.data;
   },
@@ -177,12 +283,18 @@ export const twoFAApi = {
 
 // Sessions API
 export const sessionsApi = {
-  list: async (page = 1, limit = 10): Promise<ApiResponse<{ sessions: Session[]; total: number; page: number; limit: number }>> => {
+  list: async (
+    page = 1,
+    limit = 10
+  ): Promise<ApiResponse<{ sessions: Session[]; total: number; page: number; limit: number }>> => {
     const response = await api.get(`/sessions?page=${page}&limit=${limit}`);
     return response.data;
   },
 
-  create: async (deviceName?: string, webhookUrl?: string): Promise<ApiResponse<{ session: Session }>> => {
+  create: async (
+    deviceName?: string,
+    webhookUrl?: string
+  ): Promise<ApiResponse<{ session: Session }>> => {
     const response = await api.post('/sessions', { deviceName, webhookUrl });
     return response.data;
   },
@@ -192,7 +304,10 @@ export const sessionsApi = {
     return response.data;
   },
 
-  update: async (sessionId: string, data: { deviceName?: string; webhookUrl?: string }): Promise<ApiResponse<Session>> => {
+  update: async (
+    sessionId: string,
+    data: { deviceName?: string; webhookUrl?: string }
+  ): Promise<ApiResponse<Session>> => {
     const response = await api.put(`/sessions/${sessionId}`, data);
     return response.data;
   },
@@ -225,7 +340,11 @@ export const sessionsApi = {
 
 // Messages API
 export const messagesApi = {
-  list: async (sessionId?: string, page = 1, limit = 20): Promise<ApiResponse<{ messages: Message[]; total: number; page: number; limit: number }>> => {
+  list: async (
+    sessionId?: string,
+    page = 1,
+    limit = 20
+  ): Promise<ApiResponse<{ messages: Message[]; total: number; page: number; limit: number }>> => {
     const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
     if (sessionId) params.append('sessionId', sessionId);
     const response = await api.get(`/messages?${params}`);
@@ -266,12 +385,18 @@ export const apiKeysApi = {
     return response.data;
   },
 
-  create: async (label: string, permissions: string[]): Promise<ApiResponse<{ apiKey: any; key: string }>> => {
+  create: async (
+    label: string,
+    permissions: string[]
+  ): Promise<ApiResponse<{ apiKey: any; key: string }>> => {
     const response = await api.post('/api-keys', { label, permissions });
     return response.data;
   },
 
-  update: async (keyId: string, data: { label?: string; permissions?: string[] }): Promise<ApiResponse<any>> => {
+  update: async (
+    keyId: string,
+    data: { label?: string; permissions?: string[] }
+  ): Promise<ApiResponse<any>> => {
     const response = await api.put(`/api-keys/${keyId}`, data);
     return response.data;
   },
@@ -299,7 +424,11 @@ export const webhooksApi = {
     return response.data;
   },
 
-  create: async (data: { url: string; description?: string; eventTypes: string[] }): Promise<ApiResponse<any>> => {
+  create: async (data: {
+    url: string;
+    description?: string;
+    eventTypes: string[];
+  }): Promise<ApiResponse<any>> => {
     const response = await api.post('/webhooks', data);
     return response.data;
   },

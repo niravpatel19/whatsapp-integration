@@ -13,6 +13,7 @@ router.post('/refresh', rateLimitMiddleware('auth', 20, 15 * 60), AuthController
 
 // Protected routes
 router.post('/logout', authenticate, AuthController.logout);
+router.get('/me', authenticate, requireUser, AuthController.getProfile); // Standard /me endpoint
 router.get('/profile', authenticate, requireUser, AuthController.getProfile);
 router.put('/profile', authenticate, requireUser, AuthController.updateProfile);
 router.post('/change-password', authenticate, requireUser, AuthController.changePassword);

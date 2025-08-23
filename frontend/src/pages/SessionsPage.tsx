@@ -62,16 +62,23 @@ const SessionsPage: React.FC = () => {
     onError,
   } = useSocket();
 
-  // Load sessions
+  // Load sessions with better error handling
   const loadSessions = async () => {
     try {
       setLoading(true);
       const response = await sessionsApi.list();
       if (response.success && response.data) {
-        setSessions(response.data.sessions);
+        console.log('📋 Loaded sessions:', response.data.sessions);
+        setSessions(response.data.sessions || []);
+      } else {
+        console.error('❌ Failed to load sessions:', response);
+        message.error('Failed to load sessions: ' + (response.error?.message || 'Unknown error'));
+        setSessions([]);
       }
     } catch (error: any) {
-      message.error('Failed to load sessions: ' + error.message);
+      console.error('❌ Exception loading sessions:', error);
+      message.error('Failed to load sessions: ' + (error.message || 'Network error'));
+      setSessions([]);
     } finally {
       setLoading(false);
     }
@@ -128,78 +135,106 @@ const SessionsPage: React.FC = () => {
     }
   };
 
-  // Show QR modal
+  // Show QR modal - SIMPLIFIED like working demo with DISCONNECTED handling
   const showQRModal = async (session: SessionWithQR) => {
     try {
-      // If session is CONNECTED, show connected message
       if (session.status === 'CONNECTED') {
         setSelectedSession(session);
         setQrModalVisible(true);
         return;
       }
 
-      // For DISCONNECTED sessions, try to reconnect first
+      // Handle DISCONNECTED sessions - need to reconnect first
       if (session.status === 'DISCONNECTED') {
-        message.loading('Reconnecting session...', 2);
+        console.log('🔄 Session is DISCONNECTED, initiating reconnection...');
+        message.loading('Reconnecting session...', 1);
+
         try {
-          await api.post(`/sessions/${session.sessionId}/reconnect`);
-          // Wait a moment for the session to initialize
-          setTimeout(() => {
-            showQRModal({ ...session, status: 'PENDING' as SessionWithQR['status'] });
-          }, 2000);
+          // Use refreshQR to initiate reconnection
+          await handleRefreshQR(session.sessionId);
+          message.info('Reconnection started! QR code will appear soon.');
+          // Socket.IO will handle the QR update
           return;
-        } catch (reconnectError) {
-          console.error('Reconnect failed:', reconnectError);
-          // Continue with QR fetch if reconnect fails
+        } catch (reconnectError: any) {
+          console.error('❌ Failed to reconnect:', reconnectError);
+          message.error('Failed to reconnect: ' + reconnectError.message);
+          return;
         }
       }
 
-      // Try to get existing valid QR code
-      const response = await sessionsApi.getQR(session.sessionId);
-      if (response.success && response.data) {
-        setSelectedSession({
-          ...session,
-          qrData: response.data.qrData,
-          qrExpiresAt: response.data.expiresAt,
-          qrTries: response.data.tries,
-          remainingTime: response.data.remainingTime,
-        });
-        setQrModalVisible(true);
-      } else {
-        // No valid QR found, try to refresh/generate new one
-        message.loading('Generating new QR code...', 1);
-        try {
-          await handleRefreshQR(session.sessionId);
-          // The QR will be received via socket and modal will open automatically
-        } catch (refreshError) {
-          message.error('Failed to generate QR code');
+      // Try to get existing QR from API first
+      message.loading('Getting QR code...', 0.5);
+      try {
+        const response = await sessionsApi.getQR(session.sessionId);
+        if (response.success && response.data) {
+          setSelectedSession({
+            ...session,
+            qrData: response.data.qrData,
+            qrExpiresAt: response.data.expiresAt,
+            qrTries: response.data.tries,
+            remainingTime: response.data.remainingTime,
+          });
+          setQrModalVisible(true);
+          return;
         }
+      } catch (getQRError) {
+        console.log('No existing QR found, will generate new one');
       }
+
+      // No QR found, request refresh and wait for Socket.IO event
+      await handleRefreshQR(session.sessionId);
+      message.info('Generating QR code... Please wait.');
     } catch (error: any) {
       message.error('Failed to get QR code: ' + error.message);
     }
   };
 
-  // Direct Socket.IO connection test (bypass useSocket hook)
+  // IMPROVED Socket.IO connection - based on working demo pattern
   useEffect(() => {
-    console.log('🔌 Setting up DIRECT Socket.IO connection test');
+    console.log('🔌 Setting up improved Socket.IO connection');
     const { token } = useAuthStore.getState();
 
-    if (token) {
-      const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:3001';
-      const directSocket = io(socketUrl, {
+    if (!token) {
+      console.warn('⚠️ No token available for Socket.IO connection');
+      return;
+    }
+
+    const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:3001';
+    let directSocket: any = null;
+    let isConnected = false;
+    let notificationShown = new Set<string>(); // Track shown notifications
+
+    try {
+      directSocket = io(socketUrl, {
         auth: { token },
         transports: ['websocket', 'polling'],
+        timeout: 10000,
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
       });
 
       directSocket.on('connect', () => {
-        console.log('🟢 Direct Socket.IO connected:', directSocket.id);
+        console.log('🟢 Socket.IO connected:', directSocket.id);
+        isConnected = true;
+        notificationShown.clear(); // Reset notification tracking on new connection
+      });
+
+      directSocket.on('connect_error', (error: any) => {
+        console.error('🔴 Socket.IO connection error:', error);
+        isConnected = false;
       });
 
       directSocket.on('qr:update', (data: any) => {
-        console.log('🔥 DIRECT QR Update received:', data);
+        console.log('🔥 QR Update received:', data);
 
-        // Update session with new QR data and auto-open modal
+        if (!data || !data.sessionId) {
+          console.warn('⚠️ Invalid QR update data:', data);
+          return;
+        }
+
+        // Update sessions immediately
         setSessions((prevSessions) => {
           const updatedSessions = prevSessions.map((session) =>
             session.sessionId === data.sessionId
@@ -214,13 +249,45 @@ const SessionsPage: React.FC = () => {
               : session
           );
 
-          // Auto-open QR modal (always try to open for new QR)
-          const session = updatedSessions.find((s) => s.sessionId === data.sessionId);
-          if (session && session.qrData) {
-            console.log('🚀 Auto-opening QR modal for session:', session.sessionId);
-            setSelectedSession(session);
-            setQrModalVisible(true);
-            message.success('QR Code generated! Scan with WhatsApp.');
+          // Check if this is a NEW session that we just created but isn't in the list yet
+          const existingSession = prevSessions.find((s) => s.sessionId === data.sessionId);
+          if (!existingSession) {
+            console.log('🆕 New session QR received, refreshing session list...');
+            // Refresh the sessions list to get the new session, then auto-open QR
+            setTimeout(() => {
+              loadSessions().then(() => {
+                console.log('🚀 Auto-opening QR modal for new session:', data.sessionId);
+                // Find the session after refresh
+                setSessions((currentSessions) => {
+                  const newSession = currentSessions.find((s) => s.sessionId === data.sessionId);
+                  if (newSession && !qrModalVisible) {
+                    setSelectedSession({
+                      ...newSession,
+                      qrData: data.qrData,
+                      qrExpiresAt: data.expiresAt,
+                      qrTries: data.tries,
+                      remainingTime: data.remainingTime,
+                    });
+                    setQrModalVisible(true);
+                    message.success('QR Code generated! Scan with WhatsApp.');
+                  }
+                  return currentSessions;
+                });
+              });
+            }, 500);
+          } else {
+            // Existing session - auto-open QR modal if not already open
+            const session = updatedSessions.find((s) => s.sessionId === data.sessionId);
+            if (session && session.qrData && !qrModalVisible) {
+              console.log('🚀 Auto-opening QR modal for existing session:', session.sessionId);
+
+              // Use setTimeout to avoid state updates during render
+              setTimeout(() => {
+                setSelectedSession(session);
+                setQrModalVisible(true);
+                message.success('QR Code generated! Scan with WhatsApp.');
+              }, 100);
+            }
           }
 
           return updatedSessions;
@@ -228,130 +295,78 @@ const SessionsPage: React.FC = () => {
       });
 
       directSocket.on('session:state', (data: any) => {
-        console.log('🔄 DIRECT Session state change:', data);
+        console.log('🔄 Session state change:', data);
+
+        if (!data || !data.sessionId) {
+          console.warn('⚠️ Invalid session state data:', data);
+          return;
+        }
+
         setSessions((prev) =>
           prev.map((session) =>
             session.sessionId === data.sessionId
-              ? { ...session, status: data.status as SessionWithQR['status'], phone: data.phone }
+              ? {
+                  ...session,
+                  status: data.status as SessionWithQR['status'],
+                  phone: data.phone,
+                  deviceInfo: data.deviceInfo || session.deviceInfo,
+                }
               : session
           )
         );
 
-        // Auto-close QR modal when session becomes CONNECTED
-        if (data.status === 'CONNECTED' && selectedSession?.sessionId === data.sessionId) {
-          message.success('WhatsApp connected successfully!');
-          setQrModalVisible(false);
-          setSelectedSession(null);
-        }
-      });
+        // Auto-close QR modal when session becomes CONNECTED (prevent duplicate notifications)
+        if (data.status === 'CONNECTED') {
+          console.log('📱 Session connected, checking if QR modal should close:', {
+            connectedSessionId: data.sessionId,
+            selectedSessionId: selectedSession?.sessionId,
+            modalVisible: qrModalVisible,
+          });
 
-      directSocket.on('disconnect', () => {
-        console.log('🔴 Direct Socket.IO disconnected');
-      });
+          const notificationKey = `connected-${data.sessionId}`;
+          if (!notificationShown.has(notificationKey)) {
+            notificationShown.add(notificationKey);
 
-      return () => {
-        console.log('🧹 Cleaning up direct Socket.IO connection');
-        directSocket.disconnect();
-      };
-    }
-  }, []); // Remove dependencies to prevent re-creation
-
-  // Original Socket event handlers (keep as backup)
-  useEffect(() => {
-    console.log('🔌 Setting up Socket.IO event listeners, connection status:', connectionStatus);
-
-    const unsubscribeQR = onQRUpdate((data: QRUpdatePayload) => {
-      console.log('🔥 QR Update received:', data); // Debug log
-
-      // Update session with new QR data
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.sessionId === data.sessionId
-            ? {
-                ...session,
-                qrData: data.qrData,
-                qrExpiresAt: data.expiresAt,
-                qrTries: data.tries,
-                remainingTime: data.remainingTime,
-                status: 'QR' as SessionWithQR['status'], // Ensure status is set to QR
-              }
-            : session
-        )
-      );
-
-      // Auto-open QR modal for new QR codes (if no modal is currently open)
-      setSessions((prevSessions) => {
-        if (!qrModalVisible) {
-          const session = prevSessions.find((s) => s.sessionId === data.sessionId);
-          if (session) {
-            setSelectedSession({
-              ...session,
-              qrData: data.qrData,
-              qrExpiresAt: data.expiresAt,
-              qrTries: data.tries,
-              remainingTime: data.remainingTime,
-            });
-            setQrModalVisible(true);
-            message.success('QR Code generated! Scan with WhatsApp.');
+            if (selectedSession?.sessionId === data.sessionId && qrModalVisible) {
+              console.log('✅ Auto-closing QR modal for connected session');
+              setTimeout(() => {
+                message.success('WhatsApp connected successfully!');
+                setQrModalVisible(false);
+                setSelectedSession(null);
+              }, 500); // Reduced delay for faster response
+            } else {
+              // Session connected but modal not open - just show notification
+              message.success(`Session ${data.sessionId.slice(0, 8)}... connected successfully!`);
+            }
           }
         }
-        return prevSessions; // Return the same sessions array since we already updated it above
       });
 
-      // Update selected session if QR modal is open
-      if (selectedSession && selectedSession.sessionId === data.sessionId) {
-        setSelectedSession((prev) =>
-          prev
-            ? {
-                ...prev,
-                qrData: data.qrData,
-                qrExpiresAt: data.expiresAt,
-                qrTries: data.tries,
-                remainingTime: data.remainingTime,
-              }
-            : null
-        );
-      }
-    });
+      directSocket.on('disconnect', (reason: string) => {
+        console.log('🔴 Socket.IO disconnected:', reason);
+        isConnected = false;
+        notificationShown.clear();
+      });
 
-    const unsubscribeState = onSessionStateChange((data: any) => {
-      // Update session status
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.sessionId === data.sessionId
-            ? { ...session, status: data.status as SessionWithQR['status'], phone: data.phone }
-            : session
-        )
-      );
-
-      // Auto-close QR modal when session becomes CONNECTED
-      if (data.status === 'CONNECTED' && selectedSession?.sessionId === data.sessionId) {
-        message.success('WhatsApp connected successfully!');
-        setQrModalVisible(false);
-        setSelectedSession(null);
-      }
-    });
-
-    const unsubscribeDeleted = onSessionDeleted((data: { sessionId: string }) => {
-      // Remove deleted session
-      setSessions((prev) => prev.filter((session) => session.sessionId !== data.sessionId));
-      if (selectedSession && selectedSession.sessionId === data.sessionId) {
-        setQrModalVisible(false);
-        setSelectedSession(null);
-      }
-    });
-
-    const unsubscribeError = onError((error: any) => {
-      message.error('Socket error: ' + error.message);
-    });
+      directSocket.on('error', (error: any) => {
+        console.error('🔴 Socket.IO error:', error);
+        isConnected = false;
+      });
+    } catch (socketError) {
+      console.error('🔴 Failed to create Socket.IO connection:', socketError);
+    }
 
     return () => {
-      unsubscribeQR();
-      unsubscribeState();
-      unsubscribeDeleted();
-      unsubscribeError();
+      console.log('🧹 Cleaning up Socket.IO connection');
+      if (directSocket) {
+        try {
+          directSocket.disconnect();
+        } catch (cleanupError) {
+          console.error('Error during socket cleanup:', cleanupError);
+        }
+      }
     };
-  }, [onQRUpdate, onSessionStateChange, onSessionDeleted, onError]);
+  }, []); // Removed dependencies to prevent re-creation
 
   // Load sessions on mount
   useEffect(() => {
@@ -490,14 +505,16 @@ const SessionsPage: React.FC = () => {
             </Tooltip>
           ) : (
             <Tooltip
-              title={record.status === 'DISCONNECTED' ? 'Reconnect & Show QR' : 'Show QR Code'}
+              title={record.status === 'DISCONNECTED' ? 'Reconnect Session' : 'Show QR Code'}
             >
               <Button
                 type="primary"
                 icon={<QrcodeOutlined />}
                 size="small"
                 onClick={() => showQRModal(record)}
-              />
+              >
+                {record.status === 'DISCONNECTED' ? 'Reconnect' : ''}
+              </Button>
             </Tooltip>
           )}
           {record.status === 'QR' && (
@@ -620,7 +637,7 @@ const SessionsPage: React.FC = () => {
           </Form>
         </Modal>
 
-        {/* QR Code Modal */}
+        {/* QR Code Modal - SIMPLIFIED like working demo */}
         <Modal
           title={`${selectedSession?.status === 'CONNECTED' ? 'Session Status' : 'QR Code'} - ${selectedSession?.deviceInfo?.name || 'Session'}`}
           open={qrModalVisible}
@@ -718,11 +735,7 @@ const SessionsPage: React.FC = () => {
             <div className="text-center py-8">
               <Spin size="large" />
               <div className="mt-4">
-                <Text>
-                  {selectedSession?.status === 'DISCONNECTED'
-                    ? 'Reconnecting session...'
-                    : 'Generating QR code...'}
-                </Text>
+                <Text>Generating QR code...</Text>
               </div>
             </div>
           )}

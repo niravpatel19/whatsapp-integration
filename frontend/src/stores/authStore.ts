@@ -16,19 +16,19 @@ interface AuthActions {
   login: (email: string, password: string, totpCode?: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshTokens: () => Promise<void>;
-  initializeAuth: () => void;
+  refreshTokens: () => Promise<{ accessToken: string; refreshToken: string } | void>;
+  initializeAuth: () => Promise<void>;
   setUser: (user: User) => void;
   setLoading: (loading: boolean) => void;
   clearError: () => void;
-  
+
   // 2FA Actions
   setup2FA: () => Promise<{ secret: string; qrCode: string; backupCodes: string[] }>;
   verify2FASetup: (totpCode: string) => Promise<void>;
   disable2FA: (password: string, totpCode: string) => Promise<void>;
   get2FAStatus: () => Promise<{ enabled: boolean; backupCodesCount?: number }>;
   recover2FA: (email: string, backupCode: string) => Promise<void>;
-  
+
   // Profile Actions
   updateProfile: (data: Partial<User>) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -51,17 +51,17 @@ export const useAuthStore = create<AuthStore>()(
       // Actions
       login: async (email: string, password: string, totpCode?: string) => {
         set({ isLoading: true, error: null, twoFARequired: false });
-        
+
         try {
           const response = await authApi.login(email, password, totpCode);
-          
+
           if (response.success && response.data) {
             const { user, tokens } = response.data;
-            
+
             // Store tokens in localStorage for API interceptor
             localStorage.setItem('auth_token', tokens.accessToken);
             localStorage.setItem('refresh_token', tokens.refreshToken);
-            
+
             set({
               user,
               token: tokens.accessToken,
@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthStore>()(
             });
             return;
           }
-          
+
           set({
             isLoading: false,
             error: error.response?.data?.error?.message || error.message || 'Login failed',
@@ -96,10 +96,10 @@ export const useAuthStore = create<AuthStore>()(
 
       register: async (email: string, password: string, name: string) => {
         set({ isLoading: true, error: null });
-        
+
         try {
           const response = await authApi.register(email, password, name);
-          
+
           if (response.success && response.data) {
             set({
               isLoading: false,
@@ -119,7 +119,7 @@ export const useAuthStore = create<AuthStore>()(
 
       logout: async () => {
         set({ isLoading: true });
-        
+
         try {
           await authApi.logout();
         } catch (error) {
@@ -128,7 +128,7 @@ export const useAuthStore = create<AuthStore>()(
           // Clear tokens from localStorage
           localStorage.removeItem('auth_token');
           localStorage.removeItem('refresh_token');
-          
+
           set({
             user: null,
             token: null,
@@ -146,42 +146,90 @@ export const useAuthStore = create<AuthStore>()(
         if (!refreshToken) {
           throw new Error('No refresh token available');
         }
-        
+
         try {
           const response = await authApi.refreshToken(refreshToken);
-          
+
           if (response.success && response.data) {
             const { accessToken, refreshToken: newRefreshToken } = response.data;
-            
+
             // Update tokens in localStorage
             localStorage.setItem('auth_token', accessToken);
             localStorage.setItem('refresh_token', newRefreshToken);
-            
+
             set({
               token: accessToken,
               refreshToken: newRefreshToken,
             });
+
+            return { accessToken, refreshToken: newRefreshToken };
           } else {
             throw new Error('Token refresh failed');
           }
         } catch (error) {
           // If refresh fails, logout user
+          console.error('Token refresh failed:', error);
           get().logout();
           throw error;
         }
       },
 
-      initializeAuth: () => {
+      initializeAuth: async () => {
         // Check if user is already authenticated from persisted state
-        const { token } = get();
-        
+        const { token, refreshToken } = get();
+
         if (token) {
-          // In a real app, you would validate the token with the server
-          set({ isLoading: false });
+          try {
+            // Validate token by making a simple API call
+            const response = await api.get('/auth/me');
+
+            if (response.data.success && response.data.data) {
+              set({
+                user: response.data.data,
+                isAuthenticated: true,
+                isLoading: false,
+              });
+            } else {
+              throw new Error('Token validation failed');
+            }
+          } catch (error) {
+            console.log('Token validation failed, attempting refresh...');
+
+            // Token might be expired, try to refresh if we have refresh token
+            if (refreshToken) {
+              try {
+                await get().refreshTokens();
+                set({ isLoading: false });
+              } catch (refreshError) {
+                console.error('Token refresh failed during initialization:', refreshError);
+                // Clear invalid tokens and set unauthenticated state
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('refresh_token');
+                set({
+                  user: null,
+                  token: null,
+                  refreshToken: null,
+                  isAuthenticated: false,
+                  isLoading: false,
+                });
+              }
+            } else {
+              // No refresh token, clear everything
+              localStorage.removeItem('auth_token');
+              localStorage.removeItem('refresh_token');
+              set({
+                user: null,
+                token: null,
+                refreshToken: null,
+                isAuthenticated: false,
+                isLoading: false,
+              });
+            }
+          }
         } else {
-          set({ 
+          set({
             isAuthenticated: false,
-            isLoading: false 
+            isLoading: false,
           });
         }
       },
@@ -201,10 +249,10 @@ export const useAuthStore = create<AuthStore>()(
       // 2FA Actions
       setup2FA: async () => {
         set({ isLoading: true, error: null });
-        
+
         try {
           const response = await twoFAApi.setup();
-          
+
           if (response.success && response.data) {
             set({ isLoading: false });
             return response.data;
@@ -222,10 +270,10 @@ export const useAuthStore = create<AuthStore>()(
 
       verify2FASetup: async (totpCode: string) => {
         set({ isLoading: true, error: null });
-        
+
         try {
           const response = await twoFAApi.verifySetup(totpCode);
-          
+
           if (response.success) {
             // Update user to reflect 2FA is now enabled
             const currentUser = get().user;
@@ -241,7 +289,8 @@ export const useAuthStore = create<AuthStore>()(
         } catch (error: any) {
           set({
             isLoading: false,
-            error: error.response?.data?.error?.message || error.message || '2FA verification failed',
+            error:
+              error.response?.data?.error?.message || error.message || '2FA verification failed',
           });
           throw error;
         }
@@ -249,10 +298,10 @@ export const useAuthStore = create<AuthStore>()(
 
       disable2FA: async (password: string, totpCode: string) => {
         set({ isLoading: true, error: null });
-        
+
         try {
           const response = await twoFAApi.disable(password, totpCode);
-          
+
           if (response.success) {
             // Update user to reflect 2FA is now disabled
             const currentUser = get().user;
@@ -277,7 +326,7 @@ export const useAuthStore = create<AuthStore>()(
       get2FAStatus: async () => {
         try {
           const response = await twoFAApi.getStatus();
-          
+
           if (response.success && response.data) {
             return response.data;
           } else {
@@ -285,7 +334,8 @@ export const useAuthStore = create<AuthStore>()(
           }
         } catch (error: any) {
           set({
-            error: error.response?.data?.error?.message || error.message || 'Failed to get 2FA status',
+            error:
+              error.response?.data?.error?.message || error.message || 'Failed to get 2FA status',
           });
           throw error;
         }
@@ -293,17 +343,17 @@ export const useAuthStore = create<AuthStore>()(
 
       recover2FA: async (email: string, backupCode: string) => {
         set({ isLoading: true, error: null });
-        
+
         try {
           const response = await twoFAApi.recover(email, backupCode);
-          
+
           if (response.success && response.data) {
             const { user, tokens } = response.data;
-            
+
             // Store tokens in localStorage
             localStorage.setItem('auth_token', tokens.accessToken);
             localStorage.setItem('refresh_token', tokens.refreshToken);
-            
+
             set({
               user,
               token: tokens.accessToken,
@@ -328,10 +378,10 @@ export const useAuthStore = create<AuthStore>()(
       // Profile Actions
       updateProfile: async (data: Partial<User>) => {
         set({ isLoading: true, error: null });
-        
+
         try {
           const response = await authApi.updateProfile(data);
-          
+
           if (response.success && response.data) {
             set({
               user: response.data,
@@ -351,10 +401,10 @@ export const useAuthStore = create<AuthStore>()(
 
       changePassword: async (currentPassword: string, newPassword: string) => {
         set({ isLoading: true, error: null });
-        
+
         try {
           const response = await authApi.changePassword(currentPassword, newPassword);
-          
+
           if (response.success) {
             set({ isLoading: false });
           } else {
@@ -363,7 +413,8 @@ export const useAuthStore = create<AuthStore>()(
         } catch (error: any) {
           set({
             isLoading: false,
-            error: error.response?.data?.error?.message || error.message || 'Password change failed',
+            error:
+              error.response?.data?.error?.message || error.message || 'Password change failed',
           });
           throw error;
         }

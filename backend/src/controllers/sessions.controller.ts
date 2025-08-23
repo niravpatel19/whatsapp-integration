@@ -67,9 +67,14 @@ export class SessionsController {
       const sort: any = {};
       sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-      // Get sessions with pagination
+      // Get sessions with pagination (optimized with field selection)
       const [sessions, total] = await Promise.all([
-        Session.find(query).sort(sort).skip(skip).limit(limit).lean(),
+        Session.find(query)
+          .select('sessionId status deviceInfo phone lastSeenAt createdAt updatedAt')
+          .sort(sort)
+          .skip(skip)
+          .limit(limit)
+          .lean(),
         Session.countDocuments(query),
       ]);
 
@@ -507,25 +512,31 @@ export class SessionsController {
         return;
       }
 
-      // Try to get QR from in-memory client info first (like working setup)
+      // Try to get QR from in-memory client info first (using new method)
       const wppManager = WPPConnectManager.getInstance();
-      const clientInfo = wppManager.getClientInfo(sessionId) as any;
+      const qrData = wppManager.getQRData(sessionId);
 
-      if (clientInfo?.qrData && clientInfo?.qrExpiresAt && clientInfo.qrExpiresAt > new Date()) {
+      if (qrData) {
         // Use in-memory QR data for immediate response
         const remainingTime = Math.max(
           0,
-          Math.floor((clientInfo.qrExpiresAt.getTime() - new Date().getTime()) / 1000)
+          Math.floor((qrData.expiresAt.getTime() - new Date().getTime()) / 1000)
         );
+
+        logger.info(`Serving QR from memory for session: ${sessionId}`, {
+          remainingTime,
+          attempts: qrData.attempts,
+        });
 
         res.json({
           success: true,
           data: {
-            qrData: clientInfo.qrData,
-            expiresAt: clientInfo.qrExpiresAt,
-            tries: clientInfo.qrAttempts || 1,
+            qrData: qrData.qrData,
+            expiresAt: qrData.expiresAt,
+            tries: qrData.attempts,
             remainingTime: remainingTime,
             sessionId: sessionId,
+            source: 'memory',
           },
         });
         return;
@@ -537,57 +548,84 @@ export class SessionsController {
       if (!latestQR || latestQR.expiresAt <= new Date()) {
         // If no QR or expired, try to refresh QR for non-connected sessions
         if (session.status !== SessionStatus.CONNECTED) {
+          logger.info(`No valid QR found for session ${sessionId}, attempting refresh`);
+
           try {
+            // Initiate QR refresh
             await wppManager.refreshQR(sessionId);
 
-            // Wait a moment for the new QR to be generated
-            await new Promise((resolve) => setTimeout(resolve, 3000));
+            // Wait for QR generation with multiple attempts
+            let attempts = 0;
+            const maxAttempts = 6; // 6 attempts = 15 seconds max wait
 
-            // Try to get the new QR from memory first
-            const updatedClientInfo = wppManager.getClientInfo(sessionId) as any;
-            if (
-              updatedClientInfo?.qrData &&
-              updatedClientInfo?.qrExpiresAt &&
-              updatedClientInfo.qrExpiresAt > new Date()
-            ) {
-              const remainingTime = Math.max(
-                0,
-                Math.floor((updatedClientInfo.qrExpiresAt.getTime() - new Date().getTime()) / 1000)
-              );
+            while (attempts < maxAttempts) {
+              await new Promise((resolve) => setTimeout(resolve, 2500)); // Wait 2.5 seconds
+              attempts++;
 
-              res.json({
-                success: true,
-                data: {
-                  qrData: updatedClientInfo.qrData,
-                  expiresAt: updatedClientInfo.qrExpiresAt,
-                  tries: updatedClientInfo.qrAttempts || 1,
-                  remainingTime: remainingTime,
-                  sessionId: sessionId,
-                },
-              });
-              return;
+              // Try to get the new QR from memory first
+              const updatedClientInfo = wppManager.getClientInfo(sessionId) as any;
+              if (
+                updatedClientInfo?.qrData &&
+                updatedClientInfo?.qrExpiresAt &&
+                updatedClientInfo.qrExpiresAt > new Date()
+              ) {
+                const remainingTime = Math.max(
+                  0,
+                  Math.floor(
+                    (updatedClientInfo.qrExpiresAt.getTime() - new Date().getTime()) / 1000
+                  )
+                );
+
+                logger.info(
+                  `QR generated from memory after ${attempts} attempts for session: ${sessionId}`
+                );
+
+                res.json({
+                  success: true,
+                  data: {
+                    qrData: updatedClientInfo.qrData,
+                    expiresAt: updatedClientInfo.qrExpiresAt,
+                    tries: updatedClientInfo.qrAttempts || 1,
+                    remainingTime: remainingTime,
+                    sessionId: sessionId,
+                    source: 'memory_refresh',
+                    attempts,
+                  },
+                });
+                return;
+              }
+
+              // Fallback to database
+              const newQR = await QREvent.getLatestQR(sessionId, req.user!.userId);
+              if (newQR && newQR.expiresAt > new Date()) {
+                const remainingTime = Math.max(
+                  0,
+                  Math.floor((newQR.expiresAt.getTime() - new Date().getTime()) / 1000)
+                );
+
+                logger.info(
+                  `QR generated from database after ${attempts} attempts for session: ${sessionId}`
+                );
+
+                res.json({
+                  success: true,
+                  data: {
+                    qrData: newQR.qrData,
+                    expiresAt: newQR.expiresAt,
+                    tries: newQR.tries,
+                    remainingTime: remainingTime,
+                    sessionId: newQR.sessionId,
+                    source: 'database_refresh',
+                    attempts,
+                  },
+                });
+                return;
+              }
             }
 
-            // Fallback to database
-            const newQR = await QREvent.getLatestQR(sessionId, req.user!.userId);
-            if (newQR && newQR.expiresAt > new Date()) {
-              const remainingTime = Math.max(
-                0,
-                Math.floor((newQR.expiresAt.getTime() - new Date().getTime()) / 1000)
-              );
-
-              res.json({
-                success: true,
-                data: {
-                  qrData: newQR.qrData,
-                  expiresAt: newQR.expiresAt,
-                  tries: newQR.tries,
-                  remainingTime: remainingTime,
-                  sessionId: newQR.sessionId,
-                },
-              });
-              return;
-            }
+            logger.warn(
+              `QR generation timeout after ${attempts} attempts for session: ${sessionId}`
+            );
           } catch (refreshError) {
             logger.error('Failed to refresh QR:', refreshError);
           }
@@ -596,9 +634,13 @@ export class SessionsController {
         res.status(404).json({
           error: {
             code: 'QR_NOT_AVAILABLE',
-            message: 'No valid QR code available. Please try refreshing the session.',
+            message:
+              session.status === SessionStatus.CONNECTED
+                ? 'Session is already connected'
+                : 'No valid QR code available. Please try refreshing the session.',
             timestamp: new Date().toISOString(),
             requestId: req.headers['x-request-id'] || 'unknown',
+            sessionStatus: session.status,
           },
         });
         return;
@@ -610,6 +652,11 @@ export class SessionsController {
         Math.floor((latestQR.expiresAt.getTime() - new Date().getTime()) / 1000)
       );
 
+      logger.info(`Serving QR from database for session: ${sessionId}`, {
+        remainingTime,
+        tries: latestQR.tries,
+      });
+
       res.json({
         success: true,
         data: {
@@ -618,6 +665,7 @@ export class SessionsController {
           tries: latestQR.tries,
           remainingTime: remainingTime,
           sessionId: latestQR.sessionId,
+          source: 'database',
         },
       });
     } catch (error) {

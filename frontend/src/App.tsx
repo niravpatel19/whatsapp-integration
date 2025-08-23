@@ -59,7 +59,15 @@ const App: React.FC = () => {
 
   // Initialize authentication on app start
   React.useEffect(() => {
-    initializeAuth();
+    const initAuth = async () => {
+      try {
+        await initializeAuth();
+      } catch (error) {
+        console.error('Failed to initialize authentication:', error);
+      }
+    };
+
+    initAuth();
   }, [initializeAuth]);
 
   return (

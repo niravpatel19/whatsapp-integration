@@ -152,14 +152,21 @@ class Application {
         logger.warn('⚠️ Some features may be limited without Redis (rate limiting, caching, etc.)');
       }
 
-      // Initialize WPPConnect manager
-      await this.wppManager.initialize();
-
-      // Register Socket.IO instance with service
+      // CRITICAL: Initialize Socket.IO BEFORE WPPConnect manager
+      // Register Socket.IO instance with service FIRST
       socketIOService.setServer(this.io);
 
-      // Setup Socket.IO with WPPConnect manager
+      // Setup Socket.IO with WPPConnect manager SECOND
       setupSocketIO(this.io);
+
+      // Ensure Socket.IO is fully ready before WPP manager starts
+      logger.info('Socket.IO server setup completed');
+
+      // Small delay to ensure Socket.IO is fully initialized
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Initialize WPPConnect manager LAST (so it can broadcast properly)
+      await this.wppManager.initialize();
 
       // Initialize simple test (working WhatsApp setup)
       initializeSimpleTest(this.io);
