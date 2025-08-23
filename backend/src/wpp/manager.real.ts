@@ -4,6 +4,7 @@ import { Session } from '../models/Session.model';
 import { QREvent } from '../models/QREvent.model';
 import { Event } from '../models/Event.model';
 import { Message } from '../models/Message.model';
+import { EventService } from '../services/event.service';
 import { SessionStatus, EventType, MessageStatus, MessageType } from '../types/database.types';
 import path from 'path';
 import fs from 'fs';
@@ -433,18 +434,14 @@ export class WPPConnectManager {
         // Create QR event
         await QREvent.createQREvent(userId, sessionId, formattedQRData, 15);
 
-        // Record event
-        await Event.recordEvent({
+        // Record event with webhook delivery
+        await EventService.recordQRRefresh(
           userId,
           sessionId,
-          type: EventType.QR_REFRESHED,
-          payload: {
-            attempts,
-            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-            qrLength: formattedQRData.length,
-            formatted: true,
-          },
-        });
+          formattedQRData,
+          new Date(Date.now() + 15 * 60 * 1000),
+          attempts
+        );
 
         logger.debug(`QR code stored in database for session: ${sessionId}`);
       } catch (error) {
@@ -730,14 +727,17 @@ export class WPPConnectManager {
           }
         }
 
-        // Record event (with error handling)
+        // Record event with webhook delivery (with error handling)
         try {
-          await Event.recordEvent({
+          await EventService.recordSessionStateChange(
             userId,
             sessionId,
-            type: EventType.SESSION_STATE,
-            payload: eventPayload,
-          });
+            eventPayload.oldStatus,
+            newStatus,
+            eventPayload.deviceInfo,
+            eventPayload.phone,
+            eventPayload.error
+          );
           logger.debug(`Event recorded for ${sessionId}: ${status} -> ${newStatus}`);
         } catch (eventError) {
           logger.error(`Failed to record event for ${sessionId}:`, eventError);
@@ -868,10 +868,10 @@ export class WPPConnectManager {
       const userId = session.userId.toString();
 
       // Record incoming message event
-      await Event.recordEvent({
+      await EventService.recordEvent({
         userId,
         sessionId,
-        type: EventType.MESSAGE_READ, // Using MESSAGE_READ for incoming messages
+        type: EventType.MESSAGE_DELIVERED, // More appropriate for incoming messages
         payload: {
           messageId: message.id,
           from: message.from,
@@ -924,18 +924,18 @@ export class WPPConnectManager {
         // Update message status
         await Message.updateStatus(message.messageId, newStatus);
 
-        // Record event
-        await Event.recordEvent({
-          userId,
-          sessionId,
-          type: eventType,
-          payload: {
-            messageId: message.messageId,
-            wppMessageId: ack.id,
-            ackType: ack.ack,
-            to: message.to,
-          },
-        });
+        // Record event with webhook delivery
+        switch (eventType) {
+          case EventType.MESSAGE_SENT:
+            await EventService.recordMessageSent(userId, sessionId, message.messageId, message.to, message.type);
+            break;
+          case EventType.MESSAGE_DELIVERED:
+            await EventService.recordMessageDelivered(userId, sessionId, message.messageId);
+            break;
+          case EventType.MESSAGE_READ:
+            await EventService.recordMessageRead(userId, sessionId, message.messageId);
+            break;
+        }
       }
     } catch (error) {
       logger.error('Failed to handle message ACK:', error);

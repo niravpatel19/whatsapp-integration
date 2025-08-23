@@ -1,0 +1,1565 @@
+openapi: 3.0.3
+info:
+  title: WhatsApp Integration API
+  description: |
+    A comprehensive WhatsApp integration service that enables users to manage WhatsApp device sessions through WPPConnect and send messages programmatically. 
+    
+    The system provides both an Admin UI for direct management and REST APIs for external integrations. Users can create isolated WhatsApp sessions, pair devices via QR codes, send various message types, and receive real-time updates through webhooks and Socket.IO connections.
+    
+    ## Features
+    - Multi-tenant WhatsApp session management
+    - Real-time QR code generation and device pairing
+    - Message sending (text, media, location, etc.)
+    - Webhook notifications for events
+    - Socket.IO real-time updates
+    - Two-factor authentication
+    - API key management
+    - Comprehensive audit logging
+    
+    ## Authentication
+    This API supports two authentication methods:
+    1. **JWT Bearer Token** - For user authentication
+    2. **API Key** - For programmatic access (use `X-API-Key` header)
+    
+    ## Rate Limiting
+    API endpoints are rate-limited to prevent abuse:
+    - Authentication endpoints: 10 requests per minute
+    - Session management: 50 requests per 15 minutes
+    - Message sending: 100 requests per hour
+    - Webhook management: 100 requests per 15 minutes
+    
+    ## Webhooks
+    Configure webhooks to receive real-time notifications about WhatsApp events. All webhook payloads are signed with HMAC-SHA256 using your webhook secret.
+    
+  version: 1.0.0
+  contact:
+    name: WhatsApp Integration Support
+    email: support@whatsapp-integration.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3001/api/v1
+    description: Development server
+  - url: https://api.whatsapp-integration.com/api/v1
+    description: Production server
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Create a new user account with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - name
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  minLength: 8
+                  example: SecurePassword123!
+                name:
+                  type: string
+                  example: John Doe
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      description: Authenticate user with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  example: SecurePassword123!
+                totpCode:
+                  type: string
+                  description: TOTP code if 2FA is enabled
+                  example: "123456"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/profile:
+    get:
+      tags:
+        - Authentication
+      summary: Get user profile
+      description: Retrieve the current user's profile information
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Authentication
+      summary: Update user profile
+      description: Update the current user's profile information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: John Doe Updated
+                email:
+                  type: string
+                  format: email
+                  example: newemail@example.com
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # Session Management Endpoints
+  /sessions:
+    get:
+      tags:
+        - Sessions
+      summary: List user sessions
+      description: Retrieve all WhatsApp sessions for the authenticated user
+      parameters:
+        - name: status
+          in: query
+          description: Filter sessions by status
+          schema:
+            $ref: '#/components/schemas/SessionStatus'
+        - name: limit
+          in: query
+          description: Number of sessions to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of sessions to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Sessions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+                  total:
+                    type: integer
+                    example: 5
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Sessions
+      summary: Create new session
+      description: Create a new WhatsApp session for device pairing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceName:
+                  type: string
+                  example: My WhatsApp Device
+                  description: Optional name for the device
+                metadata:
+                  type: object
+                  example:
+                    organizationId: "org-123"
+                    department: "Sales"
+                    region: "US-East"
+                  description: Custom metadata for third-party integrations
+                config:
+                  type: object
+                  example:
+                    autoReply: true
+                    businessHours: "9-17"
+                    timezone: "America/New_York"
+                  description: Configuration settings for the session
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /sessions/{sessionId}:
+    get:
+      tags:
+        - Sessions
+      summary: Get session details
+      description: Retrieve detailed information about a specific session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Session details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: '#/components/schemas/SessionDetailed'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    delete:
+      tags:
+        - Sessions
+      summary: Delete session
+      description: Delete a WhatsApp session and disconnect the device
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '204':
+          description: Session deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /sessions/{sessionId}/qr:
+    get:
+      tags:
+        - Sessions
+      summary: Get QR code
+      description: Retrieve the current QR code for device pairing
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: QR code retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qrData:
+                    type: string
+                    description: Base64 encoded QR code image
+                    example: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    example: 2023-12-01T12:30:00Z
+                  attempts:
+                    type: integer
+                    example: 1
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Sessions
+      summary: Refresh QR code
+      description: Generate a new QR code for device pairing
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: QR code refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: QR code refresh initiated
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # Message Endpoints
+  /messages/send:
+    post:
+      tags:
+        - Messages
+      summary: Send message
+      description: Send a message through a connected WhatsApp session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/TextMessage'
+                - $ref: '#/components/schemas/ImageMessage'
+                - $ref: '#/components/schemas/DocumentMessage'
+                - $ref: '#/components/schemas/AudioMessage'
+                - $ref: '#/components/schemas/VideoMessage'
+                - $ref: '#/components/schemas/LocationMessage'
+              discriminator:
+                propertyName: type
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Session not found or not connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /messages/{messageId}:
+    get:
+      tags:
+        - Messages
+      summary: Get message status
+      description: Retrieve the current status of a sent message
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          description: Message ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Message status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/Message'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /messages:
+    get:
+      tags:
+        - Messages
+      summary: Get message history
+      description: Retrieve message history with filtering and pagination
+      parameters:
+        - name: sessionId
+          in: query
+          description: Filter messages by session ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter messages by status
+          schema:
+            $ref: '#/components/schemas/MessageStatus'
+        - name: type
+          in: query
+          description: Filter messages by type
+          schema:
+            $ref: '#/components/schemas/MessageType'
+        - name: limit
+          in: query
+          description: Number of messages to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of messages to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Message history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  total:
+                    type: integer
+                    example: 150
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # Webhook Endpoints
+  /webhooks:
+    get:
+      tags:
+        - Webhooks
+      summary: List webhooks
+      description: Retrieve all webhooks for the authenticated user
+      parameters:
+        - name: includeInactive
+          in: query
+          description: Include inactive webhooks
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Webhooks retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhooks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Webhook'
+                  total:
+                    type: integer
+                    example: 3
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Webhooks
+      summary: Create webhook
+      description: Create a new webhook to receive event notifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - eventTypes
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  pattern: '^https://'
+                  example: https://your-domain.com/webhook
+                  description: HTTPS URL for webhook delivery
+                description:
+                  type: string
+                  maxLength: 500
+                  example: Production webhook for order notifications
+                eventTypes:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EventType'
+                  minItems: 1
+                  maxItems: 20
+                  example: [SESSION_STATE, MESSAGE_SENT, MESSAGE_DELIVERED]
+      responses:
+        '201':
+          description: Webhook created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhook:
+                    $ref: '#/components/schemas/Webhook'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          description: Webhook with this URL already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /webhooks/{webhookId}:
+    get:
+      tags:
+        - Webhooks
+      summary: Get webhook details
+      description: Retrieve detailed information about a specific webhook
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          description: Webhook ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Webhook details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhook:
+                    $ref: '#/components/schemas/WebhookDetailed'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Webhooks
+      summary: Update webhook
+      description: Update webhook configuration
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          description: Webhook ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  pattern: '^https://'
+                  example: https://your-domain.com/webhook-updated
+                description:
+                  type: string
+                  maxLength: 500
+                  example: Updated webhook description
+                eventTypes:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EventType'
+                  minItems: 1
+                  maxItems: 20
+                isActive:
+                  type: boolean
+                  example: true
+      responses:
+        '200':
+          description: Webhook updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhook:
+                    $ref: '#/components/schemas/Webhook'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    delete:
+      tags:
+        - Webhooks
+      summary: Delete webhook
+      description: Delete a webhook and stop all deliveries
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          description: Webhook ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '204':
+          description: Webhook deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /webhooks/{webhookId}/test:
+    post:
+      tags:
+        - Webhooks
+      summary: Test webhook
+      description: Send a test payload to the webhook URL
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          description: Webhook ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: object
+                  description: Custom test payload (optional)
+                  example:
+                    test: true
+                    message: Custom test message
+      responses:
+        '200':
+          description: Webhook test completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+                      responseCode:
+                        type: integer
+                        example: 200
+                      responseTime:
+                        type: integer
+                        description: Response time in milliseconds
+                        example: 245
+                      error:
+                        type: string
+                        description: Error message if test failed
+                        example: Connection timeout
+                      timestamp:
+                        type: string
+                        format: date-time
+                        example: 2023-12-01T12:30:00Z
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /webhooks/event-types:
+    get:
+      tags:
+        - Webhooks
+      summary: Get available event types
+      description: Retrieve all available event types for webhook subscriptions
+      security: []
+      responses:
+        '200':
+          description: Event types retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  eventTypes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          $ref: '#/components/schemas/EventType'
+                        description:
+                          type: string
+                          example: Session status changes (connected, disconnected, etc.)
+
+  # API Key Management
+  /api-keys:
+    get:
+      tags:
+        - API Keys
+      summary: List API keys
+      description: Retrieve all API keys for the authenticated user (keys are masked for security)
+      responses:
+        '200':
+          description: API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/APIKey'
+                  total:
+                    type: integer
+                    example: 2
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - API Keys
+      summary: Create API key
+      description: Generate a new API key for programmatic access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  example: Production API Key
+                  description: Optional label for the API key
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: 550e8400-e29b-41d4-a716-446655440000
+                      key:
+                        type: string
+                        description: Full API key (only shown once)
+                        example: ak_1234567890abcdef1234567890abcdef1234567890abcdef
+                      keyPrefix:
+                        type: string
+                        example: ak_12345678
+                      label:
+                        type: string
+                        example: Production API Key
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: 2023-12-01T12:30:00Z
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api-keys/{keyId}:
+    delete:
+      tags:
+        - API Keys
+      summary: Revoke API key
+      description: Revoke an API key and prevent further access
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          description: API Key ID
+          schema:
+            type: string
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '204':
+          description: API key revoked successfully
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # Events
+  /events:
+    get:
+      tags:
+        - Events
+      summary: Get events
+      description: Retrieve events with filtering and pagination
+      parameters:
+        - name: sessionId
+          in: query
+          description: Filter events by session ID
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Filter events by type
+          schema:
+            $ref: '#/components/schemas/EventType'
+        - name: limit
+          in: query
+          description: Number of events to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of events to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Events retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  total:
+                    type: integer
+                    example: 500
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from login endpoint
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for programmatic access
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        name:
+          type: string
+          example: John Doe
+        twoFAEnabled:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        status:
+          $ref: '#/components/schemas/SessionStatus'
+        deviceInfo:
+          type: object
+          properties:
+            name:
+              type: string
+              example: My WhatsApp Device
+            platform:
+              type: string
+              example: WhatsApp Web
+            version:
+              type: string
+              example: 2.2.0
+        phone:
+          type: string
+          example: "+1234567890"
+          description: WhatsApp phone number (populated when session connects)
+        metadata:
+          type: object
+          example:
+            organizationId: "org-123"
+            department: "Sales"
+          description: Custom metadata for third-party integrations
+        config:
+          type: object
+          example:
+            autoReply: true
+            businessHours: "9-17"
+          description: Configuration settings for the session
+        lastSeenAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+
+    SessionDetailed:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          properties:
+            stats:
+              type: object
+              properties:
+                messageCount:
+                  type: integer
+                  example: 150
+                connectionDuration:
+                  type: integer
+                  description: Connection duration in seconds
+                  example: 3600
+                errorCount:
+                  type: integer
+                  example: 2
+
+    SessionStatus:
+      type: string
+      enum:
+        - PENDING
+        - QR
+        - CONNECTED
+        - DISCONNECTED
+        - EXPIRED
+        - ERROR
+      example: CONNECTED
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        messageId:
+          type: string
+          example: msg-123456789
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        to:
+          type: string
+          example: "+1234567890"
+        type:
+          $ref: '#/components/schemas/MessageType'
+        content:
+          type: string
+          example: Hello, this is a test message
+        status:
+          $ref: '#/components/schemas/MessageStatus'
+        error:
+          type: string
+          example: Message delivery failed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+
+    MessageType:
+      type: string
+      enum:
+        - text
+        - image
+        - document
+        - audio
+        - video
+        - location
+      example: text
+
+    MessageStatus:
+      type: string
+      enum:
+        - QUEUED
+        - SENT
+        - DELIVERED
+        - READ
+        - FAILED
+      example: DELIVERED
+
+    TextMessage:
+      type: object
+      required:
+        - sessionId
+        - to
+        - type
+        - content
+      properties:
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        to:
+          type: string
+          example: "+1234567890"
+        type:
+          type: string
+          enum: [text]
+          example: text
+        content:
+          type: string
+          example: Hello, this is a test message
+
+    ImageMessage:
+      type: object
+      required:
+        - sessionId
+        - to
+        - type
+        - imageUrl
+      properties:
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        to:
+          type: string
+          example: "+1234567890"
+        type:
+          type: string
+          enum: [image]
+          example: image
+        imageUrl:
+          type: string
+          format: uri
+          example: https://example.com/image.jpg
+        caption:
+          type: string
+          example: Check out this image!
+
+    DocumentMessage:
+      type: object
+      required:
+        - sessionId
+        - to
+        - type
+        - documentUrl
+      properties:
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        to:
+          type: string
+          example: "+1234567890"
+        type:
+          type: string
+          enum: [document]
+          example: document
+        documentUrl:
+          type: string
+          format: uri
+          example: https://example.com/document.pdf
+        filename:
+          type: string
+          example: important-document.pdf
+
+    AudioMessage:
+      type: object
+      required:
+        - sessionId
+        - to
+        - type
+        - audioUrl
+      properties:
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        to:
+          type: string
+          example: "+1234567890"
+        type:
+          type: string
+          enum: [audio]
+          example: audio
+        audioUrl:
+          type: string
+          format: uri
+          example: https://example.com/audio.mp3
+
+    VideoMessage:
+      type: object
+      required:
+        - sessionId
+        - to
+        - type
+        - videoUrl
+      properties:
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        to:
+          type: string
+          example: "+1234567890"
+        type:
+          type: string
+          enum: [video]
+          example: video
+        videoUrl:
+          type: string
+          format: uri
+          example: https://example.com/video.mp4
+        caption:
+          type: string
+          example: Check out this video!
+
+    LocationMessage:
+      type: object
+      required:
+        - sessionId
+        - to
+        - type
+        - latitude
+        - longitude
+      properties:
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        to:
+          type: string
+          example: "+1234567890"
+        type:
+          type: string
+          enum: [location]
+          example: location
+        latitude:
+          type: number
+          format: float
+          example: 37.7749
+        longitude:
+          type: number
+          format: float
+          example: -122.4194
+        address:
+          type: string
+          example: San Francisco, CA, USA
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        url:
+          type: string
+          format: uri
+          example: https://your-domain.com/webhook
+        description:
+          type: string
+          example: Production webhook for order notifications
+        isActive:
+          type: boolean
+          example: true
+        eventTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventType'
+          example: [SESSION_STATE, MESSAGE_SENT]
+        stats:
+          type: object
+          properties:
+            totalDeliveries:
+              type: integer
+              example: 150
+            successfulDeliveries:
+              type: integer
+              example: 145
+            failedDeliveries:
+              type: integer
+              example: 5
+            successRate:
+              type: number
+              format: float
+              example: 96.67
+            averageResponseTime:
+              type: integer
+              description: Average response time in milliseconds
+              example: 245
+        health:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+
+    WebhookDetailed:
+      allOf:
+        - $ref: '#/components/schemas/Webhook'
+        - type: object
+          properties:
+            lastResponseCode:
+              type: integer
+              example: 200
+            lastError:
+              type: string
+              example: Connection timeout
+            retryCount:
+              type: integer
+              example: 0
+            recentAttempts:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: 2023-12-01T12:30:00Z
+                  success:
+                    type: boolean
+                    example: true
+                  responseCode:
+                    type: integer
+                    example: 200
+                  responseTime:
+                    type: integer
+                    example: 245
+                  error:
+                    type: string
+                    example: Connection timeout
+                  retryCount:
+                    type: integer
+                    example: 0
+
+    EventType:
+      type: string
+      enum:
+        - SESSION_STATE
+        - SESSION_DELETED
+        - MESSAGE_SENT
+        - MESSAGE_DELIVERED
+        - MESSAGE_READ
+        - QR_REFRESHED
+        - LOGIN
+        - LOGOUT
+        - ERROR
+        - DISCONNECTED
+        - RECONNECTED
+      example: SESSION_STATE
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        eventId:
+          type: string
+          example: evt-123456789
+        sessionId:
+          type: string
+          example: whatsapp-session-123
+        type:
+          $ref: '#/components/schemas/EventType'
+        payload:
+          type: object
+          description: Event-specific data
+          example:
+            status: CONNECTED
+            deviceInfo:
+              name: My WhatsApp Device
+              platform: WhatsApp Web
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+
+    APIKey:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        keyPrefix:
+          type: string
+          description: Masked API key showing only prefix
+          example: ak_12345678...cdef
+        label:
+          type: string
+          example: Production API Key
+        lastUsedAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+        createdAt:
+          type: string
+          format: date-time
+          example: 2023-12-01T12:30:00Z
+
+    Pagination:
+      type: object
+      properties:
+        limit:
+          type: integer
+          example: 20
+        offset:
+          type: integer
+          example: 0
+        total:
+          type: integer
+          example: 150
+        hasMore:
+          type: boolean
+          example: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid input data
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    example: email
+                  message:
+                    type: string
+                    example: Invalid email format
+            timestamp:
+              type: string
+              format: date-time
+              example: 2023-12-01T12:30:00Z
+            requestId:
+              type: string
+              example: req-123456789
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid input data
+              details:
+                - field: email
+                  message: Invalid email format
+              timestamp: 2023-12-01T12:30:00Z
+              requestId: req-123456789
+
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required
+              timestamp: 2023-12-01T12:30:00Z
+              requestId: req-123456789
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+              timestamp: 2023-12-01T12:30:00Z
+              requestId: req-123456789
+
+    ConflictError:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: CONFLICT
+              message: Resource already exists
+              timestamp: 2023-12-01T12:30:00Z
+              requestId: req-123456789
+
+tags:
+  - name: Authentication
+    description: User authentication and profile management
+  - name: Sessions
+    description: WhatsApp session management and QR code handling
+  - name: Messages
+    description: Message sending and status tracking
+  - name: Webhooks
+    description: Webhook configuration and event notifications
+  - name: API Keys
+    description: API key management for programmatic access
+  - name: Events
+    description: Event history and audit logs

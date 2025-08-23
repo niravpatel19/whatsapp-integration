@@ -11,6 +11,8 @@ export interface ISession extends Document {
   phone?: string;
   lastSeenAt?: Date;
   wppState?: any;
+  metadata?: any; // Custom metadata for third-party integrations
+  config?: any; // Configuration data for the session
   createdAt: Date;
   updatedAt: Date;
   
@@ -33,7 +35,7 @@ export interface ISession extends Document {
 
 // Interface for Session model (static methods)
 export interface ISessionModel extends Model<ISession> {
-  createSession(userId: string, deviceName?: string): Promise<ISession>;
+  createSession(userId: string, deviceName?: string, metadata?: any, config?: any): Promise<ISession>;
   getUserSessions(userId: string, includeExpired?: boolean): Promise<ISession[]>;
   getSessionBySessionId(sessionId: string, userId: string): Promise<ISession | null>;
   updateStatus(sessionId: string, newStatus: SessionStatus, error?: string): Promise<ISession | null>;
@@ -128,6 +130,14 @@ const SessionSchema = new Schema<ISession>({
   wppState: {
     type: Schema.Types.Mixed, // Flexible JSON for WPPConnect state
     select: false // Don't include by default for performance
+  },
+  metadata: {
+    type: Schema.Types.Mixed, // Custom metadata for third-party integrations
+    default: {}
+  },
+  config: {
+    type: Schema.Types.Mixed, // Configuration data for the session
+    default: {}
   },
   
   // Statistics
@@ -266,7 +276,9 @@ SessionSchema.methods.isExpired = function(): boolean {
 // Static Methods
 SessionSchema.statics.createSession = async function(
   userId: string,
-  deviceName?: string
+  deviceName?: string,
+  metadata?: any,
+  config?: any
 ): Promise<ISession> {
   const sessionId = uuidv4();
   
@@ -278,7 +290,9 @@ SessionSchema.statics.createSession = async function(
       name: deviceName,
       platform: 'Unknown',
       version: 'Unknown'
-    } : undefined
+    } : undefined,
+    metadata: metadata || {},
+    config: config || {}
   });
   
   return await session.save();

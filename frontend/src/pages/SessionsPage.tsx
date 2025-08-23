@@ -542,15 +542,15 @@ const SessionsPage: React.FC = () => {
 
   return (
     <Layout className="min-h-screen">
-      <Header className="bg-white shadow-sm border-b border-gray-200 px-6">
-        <div className="flex items-center justify-between">
+      <Header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="container page-header">
           <div>
             <Title level={3} className="mb-0">
               WhatsApp Sessions
             </Title>
             <Text type="secondary">Manage your WhatsApp device connections</Text>
           </div>
-          <Space>
+          <div className="page-actions">
             <Button icon={<ReloadOutlined />} onClick={loadSessions} loading={loading}>
               Refresh
             </Button>
@@ -562,184 +562,186 @@ const SessionsPage: React.FC = () => {
             >
               New Session
             </Button>
-          </Space>
+          </div>
         </div>
       </Header>
 
-      <Content className="p-6">
-        {connectionStatus !== 'connected' && (
-          <Alert
-            message="Socket.IO Connection Required"
-            description="Real-time features require an active Socket.IO connection. Please check your connection."
-            type="warning"
-            showIcon
-            className="mb-4"
-          />
-        )}
-
-        <Card>
-          <Table
-            columns={columns}
-            dataSource={sessions}
-            rowKey="sessionId"
-            loading={loading}
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total) => `Total ${total} sessions`,
-            }}
-          />
-        </Card>
-
-        {/* Create Session Modal */}
-        <Modal
-          title="Create New Session"
-          open={createModalVisible}
-          onCancel={() => {
-            setCreateModalVisible(false);
-            form.resetFields();
-          }}
-          footer={null}
-        >
-          <Form form={form} layout="vertical" onFinish={handleCreateSession}>
-            <Form.Item
-              name="deviceName"
-              label="Device Name"
-              rules={[{ max: 50, message: 'Device name must be less than 50 characters' }]}
-            >
-              <Input placeholder="e.g., My WhatsApp Bot" />
-            </Form.Item>
-
-            <Form.Item
-              name="webhookUrl"
-              label="Webhook URL (Optional)"
-              rules={[{ type: 'url', message: 'Please enter a valid URL' }]}
-            >
-              <Input placeholder="https://your-webhook-url.com/webhook" />
-            </Form.Item>
-
-            <Form.Item className="mb-0">
-              <Space className="w-full justify-end">
-                <Button
-                  onClick={() => {
-                    setCreateModalVisible(false);
-                    form.resetFields();
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button type="primary" htmlType="submit" loading={createLoading}>
-                  Create Session
-                </Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </Modal>
-
-        {/* QR Code Modal - SIMPLIFIED like working demo */}
-        <Modal
-          title={`${selectedSession?.status === 'CONNECTED' ? 'Session Status' : 'QR Code'} - ${selectedSession?.deviceInfo?.name || 'Session'}`}
-          open={qrModalVisible}
-          onCancel={() => {
-            setQrModalVisible(false);
-            setSelectedSession(null);
-          }}
-          footer={[
-            selectedSession?.status !== 'CONNECTED' && (
-              <Button
-                key="refresh"
-                onClick={() => selectedSession && handleRefreshQR(selectedSession.sessionId)}
-              >
-                Refresh QR
-              </Button>
-            ),
-            <Button
-              key="close"
-              type={selectedSession?.status === 'CONNECTED' ? 'primary' : 'default'}
-              onClick={() => {
-                setQrModalVisible(false);
-                setSelectedSession(null);
-              }}
-            >
-              {selectedSession?.status === 'CONNECTED' ? 'OK' : 'Close'}
-            </Button>,
-          ].filter(Boolean)}
-          width={400}
-        >
-          {selectedSession?.status === 'CONNECTED' ? (
-            <div className="text-center py-8">
-              <div className="mb-4">
-                <WifiOutlined style={{ fontSize: '48px', color: '#52c41a' }} />
-              </div>
-              <div className="space-y-2">
-                <Title level={4} style={{ color: '#52c41a', margin: 0 }}>
-                  WhatsApp Connected!
-                </Title>
-                <Text type="secondary">
-                  Your WhatsApp session is active and ready to send messages.
-                </Text>
-                {selectedSession.phone && (
-                  <div className="mt-4">
-                    <Text strong>
-                      <PhoneOutlined /> Connected Phone: {selectedSession.phone}
-                    </Text>
-                  </div>
-                )}
-                <div className="mt-4">
-                  <Text type="secondary">Session ID: {selectedSession.sessionId}</Text>
-                </div>
-              </div>
-            </div>
-          ) : selectedSession?.qrData ? (
-            <div className="text-center">
-              <div className="mb-4">
-                <img
-                  src={selectedSession.qrData}
-                  width={256}
-                  height={256}
-                  alt="WhatsApp QR Code"
-                  style={{
-                    border: '1px solid #d9d9d9',
-                    borderRadius: '8px',
-                    backgroundColor: 'white',
-                  }}
-                  onError={(e) => {
-                    console.error('QR Code image failed to load');
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Text type="secondary">Scan this QR code with WhatsApp on your phone</Text>
-                <div>
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    Open WhatsApp → Settings → Linked Devices → Link a Device
-                  </Text>
-                </div>
-                {qrCountdown > 0 && (
-                  <div>
-                    <Text type={qrCountdown < 60 ? 'danger' : 'warning'}>
-                      Expires in: {Math.floor(qrCountdown / 60)}m {qrCountdown % 60}s
-                    </Text>
-                  </div>
-                )}
-                {selectedSession.qrTries && selectedSession.qrTries > 0 && (
-                  <div>
-                    <Text type="secondary">Attempt: {selectedSession.qrTries}</Text>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Spin size="large" />
-              <div className="mt-4">
-                <Text>Generating QR code...</Text>
-              </div>
-            </div>
+      <Content className="py-6">
+        <div className="container">
+          {connectionStatus !== 'connected' && (
+            <Alert
+              message="Socket.IO Connection Required"
+              description="Real-time features require an active Socket.IO connection. Please check your connection."
+              type="warning"
+              showIcon
+              className="mb-4"
+            />
           )}
-        </Modal>
+
+          <Card>
+            <Table
+              columns={columns}
+              dataSource={sessions}
+              rowKey="sessionId"
+              loading={loading}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `Total ${total} sessions`,
+              }}
+            />
+          </Card>
+
+          {/* Create Session Modal */}
+          <Modal
+            title="Create New Session"
+            open={createModalVisible}
+            onCancel={() => {
+              setCreateModalVisible(false);
+              form.resetFields();
+            }}
+            footer={null}
+          >
+            <Form form={form} layout="vertical" onFinish={handleCreateSession}>
+              <Form.Item
+                name="deviceName"
+                label="Device Name"
+                rules={[{ max: 50, message: 'Device name must be less than 50 characters' }]}
+              >
+                <Input placeholder="e.g., My WhatsApp Bot" />
+              </Form.Item>
+
+              <Form.Item
+                name="webhookUrl"
+                label="Webhook URL (Optional)"
+                rules={[{ type: 'url', message: 'Please enter a valid URL' }]}
+              >
+                <Input placeholder="https://your-webhook-url.com/webhook" />
+              </Form.Item>
+
+              <Form.Item className="mb-0">
+                <Space className="w-full justify-end">
+                  <Button
+                    onClick={() => {
+                      setCreateModalVisible(false);
+                      form.resetFields();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="primary" htmlType="submit" loading={createLoading}>
+                    Create Session
+                  </Button>
+                </Space>
+              </Form.Item>
+            </Form>
+          </Modal>
+
+          {/* QR Code Modal - SIMPLIFIED like working demo */}
+          <Modal
+            title={`${selectedSession?.status === 'CONNECTED' ? 'Session Status' : 'QR Code'} - ${selectedSession?.deviceInfo?.name || 'Session'}`}
+            open={qrModalVisible}
+            onCancel={() => {
+              setQrModalVisible(false);
+              setSelectedSession(null);
+            }}
+            footer={[
+              selectedSession?.status !== 'CONNECTED' && (
+                <Button
+                  key="refresh"
+                  onClick={() => selectedSession && handleRefreshQR(selectedSession.sessionId)}
+                >
+                  Refresh QR
+                </Button>
+              ),
+              <Button
+                key="close"
+                type={selectedSession?.status === 'CONNECTED' ? 'primary' : 'default'}
+                onClick={() => {
+                  setQrModalVisible(false);
+                  setSelectedSession(null);
+                }}
+              >
+                {selectedSession?.status === 'CONNECTED' ? 'OK' : 'Close'}
+              </Button>,
+            ].filter(Boolean)}
+            width={400}
+          >
+            {selectedSession?.status === 'CONNECTED' ? (
+              <div className="text-center py-8">
+                <div className="mb-4">
+                  <WifiOutlined style={{ fontSize: '48px', color: '#52c41a' }} />
+                </div>
+                <div className="space-y-2">
+                  <Title level={4} style={{ color: '#52c41a', margin: 0 }}>
+                    WhatsApp Connected!
+                  </Title>
+                  <Text type="secondary">
+                    Your WhatsApp session is active and ready to send messages.
+                  </Text>
+                  {selectedSession.phone && (
+                    <div className="mt-4">
+                      <Text strong>
+                        <PhoneOutlined /> Connected Phone: {selectedSession.phone}
+                      </Text>
+                    </div>
+                  )}
+                  <div className="mt-4">
+                    <Text type="secondary">Session ID: {selectedSession.sessionId}</Text>
+                  </div>
+                </div>
+              </div>
+            ) : selectedSession?.qrData ? (
+              <div className="text-center">
+                <div className="mb-4">
+                  <img
+                    src={selectedSession.qrData}
+                    width={256}
+                    height={256}
+                    alt="WhatsApp QR Code"
+                    style={{
+                      border: '1px solid #d9d9d9',
+                      borderRadius: '8px',
+                      backgroundColor: 'white',
+                    }}
+                    onError={(e) => {
+                      console.error('QR Code image failed to load');
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Text type="secondary">Scan this QR code with WhatsApp on your phone</Text>
+                  <div>
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                      Open WhatsApp → Settings → Linked Devices → Link a Device
+                    </Text>
+                  </div>
+                  {qrCountdown > 0 && (
+                    <div>
+                      <Text type={qrCountdown < 60 ? 'danger' : 'warning'}>
+                        Expires in: {Math.floor(qrCountdown / 60)}m {qrCountdown % 60}s
+                      </Text>
+                    </div>
+                  )}
+                  {selectedSession.qrTries && selectedSession.qrTries > 0 && (
+                    <div>
+                      <Text type="secondary">Attempt: {selectedSession.qrTries}</Text>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Spin size="large" />
+                <div className="mt-4">
+                  <Text>Generating QR code...</Text>
+                </div>
+              </div>
+            )}
+          </Modal>
+        </div>
       </Content>
     </Layout>
   );

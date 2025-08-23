@@ -1,0 +1,850 @@
+{
+  "info": {
+    "name": "WhatsApp Integration API",
+    "description": "Complete API collection for WhatsApp Integration service with authentication, session management, messaging, and webhooks.",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3001/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "message_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "webhook_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"SecurePassword123!\",\n  \"name\": \"John Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Register a new user account"
+          },
+          "response": []
+        },
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('jwt_token', response.token);",
+                  "    console.log('JWT token saved:', response.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login user and get JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/profile",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "profile"]
+            },
+            "description": "Get current user profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe Updated\",\n  \"email\": \"newemail@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/profile",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "profile"]
+            },
+            "description": "Update user profile information"
+          },
+          "response": []
+        }
+      ],
+      "description": "User authentication and profile management endpoints"
+    },
+    {
+      "name": "API Keys",
+      "item": [
+        {
+          "name": "List API Keys",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api-keys",
+              "host": ["{{base_url}}"],
+              "path": ["api-keys"]
+            },
+            "description": "Get all API keys for the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Create API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('api_key', response.apiKey.key);",
+                  "    console.log('API key saved:', response.apiKey.key);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Postman Test API Key\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api-keys",
+              "host": ["{{base_url}}"],
+              "path": ["api-keys"]
+            },
+            "description": "Create a new API key"
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke API Key",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api-keys/:keyId",
+              "host": ["{{base_url}}"],
+              "path": ["api-keys", ":keyId"],
+              "variable": [
+                {
+                  "key": "keyId",
+                  "value": "API_KEY_ID_HERE"
+                }
+              ]
+            },
+            "description": "Revoke an API key"
+          },
+          "response": []
+        }
+      ],
+      "description": "API key management endpoints"
+    },
+    {
+      "name": "Sessions",
+      "item": [
+        {
+          "name": "List Sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["sessions"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "status",
+                  "value": "CONNECTED",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all WhatsApp sessions for the user"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('session_id', response.session.sessionId);",
+                  "    console.log('Session ID saved:', response.session.sessionId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceName\": \"Postman Test Device\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["sessions"]
+            },
+            "description": "Create a new WhatsApp session"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}"]
+            },
+            "description": "Get detailed information about a specific session"
+          },
+          "response": []
+        },
+        {
+          "name": "Get QR Code",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/qr",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "qr"]
+            },
+            "description": "Get the current QR code for device pairing"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh QR Code",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}/refresh-qr",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}", "refresh-qr"]
+            },
+            "description": "Generate a new QR code for device pairing"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Session",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}"]
+            },
+            "description": "Delete a WhatsApp session"
+          },
+          "response": []
+        }
+      ],
+      "description": "WhatsApp session management endpoints"
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Send Text Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('message_id', response.message.messageId);",
+                  "    console.log('Message ID saved:', response.message.messageId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{session_id}}\",\n  \"to\": \"+1234567890\",\n  \"type\": \"text\",\n  \"content\": \"Hello from Postman! This is a test message.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages/send",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "send"]
+            },
+            "description": "Send a text message"
+          },
+          "response": []
+        },
+        {
+          "name": "Send Image Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{session_id}}\",\n  \"to\": \"+1234567890\",\n  \"type\": \"image\",\n  \"imageUrl\": \"https://via.placeholder.com/300x200.png\",\n  \"caption\": \"Test image from Postman\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages/send",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "send"]
+            },
+            "description": "Send an image message"
+          },
+          "response": []
+        },
+        {
+          "name": "Send Document Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{session_id}}\",\n  \"to\": \"+1234567890\",\n  \"type\": \"document\",\n  \"documentUrl\": \"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf\",\n  \"filename\": \"test-document.pdf\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages/send",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "send"]
+            },
+            "description": "Send a document message"
+          },
+          "response": []
+        },
+        {
+          "name": "Send Location Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{session_id}}\",\n  \"to\": \"+1234567890\",\n  \"type\": \"location\",\n  \"latitude\": 37.7749,\n  \"longitude\": -122.4194,\n  \"address\": \"San Francisco, CA, USA\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages/send",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "send"]
+            },
+            "description": "Send a location message"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Message Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/messages/{{message_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "{{message_id}}"]
+            },
+            "description": "Get the status of a sent message"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Message History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/messages?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["messages"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "sessionId",
+                  "value": "{{session_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "SENT",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "text",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get message history with filtering"
+          },
+          "response": []
+        }
+      ],
+      "description": "Message sending and tracking endpoints"
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Get Event Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/event-types",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "event-types"]
+            },
+            "description": "Get all available event types for webhook subscriptions"
+          },
+          "response": []
+        },
+        {
+          "name": "List Webhooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks?includeInactive=false",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks"],
+              "query": [
+                {
+                  "key": "includeInactive",
+                  "value": "false"
+                }
+              ]
+            },
+            "description": "Get all webhooks for the authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Webhook",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('webhook_id', response.webhook.id);",
+                  "    console.log('Webhook ID saved:', response.webhook.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://webhook.site/your-unique-url\",\n  \"description\": \"Postman test webhook\",\n  \"eventTypes\": [\n    \"SESSION_STATE\",\n    \"MESSAGE_SENT\",\n    \"MESSAGE_DELIVERED\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks"]
+            },
+            "description": "Create a new webhook"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Webhook Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}"]
+            },
+            "description": "Get detailed information about a specific webhook"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Webhook",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated webhook description\",\n  \"eventTypes\": [\n    \"SESSION_STATE\",\n    \"MESSAGE_SENT\",\n    \"MESSAGE_DELIVERED\",\n    \"QR_REFRESHED\"\n  ],\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}"]
+            },
+            "description": "Update webhook configuration"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payload\": {\n    \"test\": true,\n    \"message\": \"This is a test webhook from Postman\",\n    \"timestamp\": \"{{$isoTimestamp}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}/test",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}", "test"]
+            },
+            "description": "Test webhook delivery"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Webhook Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}/logs?limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}", "logs"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Get webhook delivery logs"
+          },
+          "response": []
+        },
+        {
+          "name": "Retry Webhook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}/retry",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}", "retry"]
+            },
+            "description": "Retry failed webhook deliveries"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Webhook",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}"]
+            },
+            "description": "Delete a webhook"
+          },
+          "response": []
+        }
+      ],
+      "description": "Webhook management and event notification endpoints"
+    },
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "Get Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/events?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["events"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "sessionId",
+                  "value": "{{session_id}}",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "SESSION_STATE",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get events with filtering and pagination"
+          },
+          "response": []
+        }
+      ],
+      "description": "Event history and audit log endpoints"
+    },
+    {
+      "name": "API Key Authentication",
+      "item": [
+        {
+          "name": "List Sessions (API Key)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["sessions"]
+            },
+            "description": "Example of using API key authentication instead of JWT"
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message (API Key)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{session_id}}\",\n  \"to\": \"+1234567890\",\n  \"type\": \"text\",\n  \"content\": \"Hello from API Key authentication!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages/send",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "send"]
+            },
+            "description": "Example of sending a message using API key authentication"
+          },
+          "response": []
+        }
+      ],
+      "description": "Examples of using API key authentication instead of JWT tokens"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-set base URL based on environment",
+          "if (pm.environment.get('environment') === 'production') {",
+          "    pm.collectionVariables.set('base_url', 'https://api.whatsapp-integration.com/api/v1');",
+          "} else {",
+          "    pm.collectionVariables.set('base_url', 'http://localhost:3001/api/v1');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test to check response time",
+          "pm.test('Response time is less than 5000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "// Global test to check for proper error format",
+          "if (pm.response.code >= 400) {",
+          "    pm.test('Error response has proper format', function () {",
+          "        const response = pm.response.json();",
+          "        pm.expect(response).to.have.property('error');",
+          "        pm.expect(response.error).to.have.property('code');",
+          "        pm.expect(response.error).to.have.property('message');",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ]
+}

@@ -10,6 +10,7 @@ const DashboardPage = React.lazy(() => import('@/pages/DashboardPage'));
 const SessionsPage = React.lazy(() => import('@/pages/SessionsPage'));
 const MessagesPage = React.lazy(() => import('@/pages/MessagesPage'));
 const ProfilePage = React.lazy(() => import('@/pages/ProfilePage'));
+const WebhooksPage = React.lazy(() => import('@/pages/WebhooksPage'));
 const SimpleWhatsAppTest = React.lazy(() => import('@/pages/SimpleWhatsAppTest'));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
 
@@ -133,6 +134,14 @@ const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/webhooks"
+              element={
+                <ProtectedRoute>
+                  <WebhooksPage />
                 </ProtectedRoute>
               }
             />

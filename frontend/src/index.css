@@ -107,8 +107,8 @@
 }
 
 .ant-menu-item-selected {
-  background-color: #eff6ff !important;
-  color: #0ea5e9 !important;
+  background-color: #e8fff2 !important;
+  color: #128C7E !important;
 }
 
 .ant-menu-item:hover {
@@ -131,13 +131,13 @@
 }
 
 .ant-btn-primary {
-  background: #0ea5e9 !important;
-  border-color: #0ea5e9 !important;
+  background: #25D366 !important;
+  border-color: #25D366 !important;
 }
 
 .ant-btn-primary:hover {
-  background: #0284c7 !important;
-  border-color: #0284c7 !important;
+  background: #1fb156 !important;
+  border-color: #1fb156 !important;
 }
 
 /* QR Code container */
@@ -204,5 +204,30 @@
 @media print {
   .no-print {
     display: none !important;
+  }
+}
+
+/* SaaS layout helpers */
+@layer components {
+  .container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  .page-header {
+    @apply flex items-center justify-between py-4;
+    flex-wrap: wrap; /* allow wrapping to prevent overlap */
+    row-gap: 12px;
+  }
+  .page-actions {
+    @apply flex items-center gap-2;
+    flex-wrap: wrap; /* buttons can wrap on smaller widths */
+    margin-left: auto; /* keep actions aligned to the right */
+  }
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
 }

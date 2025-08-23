@@ -19,7 +19,6 @@ import {
   Divider,
   Alert,
   Spin,
-
 } from 'antd';
 import {
   KeyOutlined,
@@ -54,8 +53,8 @@ const ProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
-  const [revealedKeys, setRevealedKeys] = useState<{[keyId: string]: string}>({});
-  const [revealingKeys, setRevealingKeys] = useState<{[keyId: string]: boolean}>({});
+  const [revealedKeys, setRevealedKeys] = useState<{ [keyId: string]: string }>({});
+  const [revealingKeys, setRevealingKeys] = useState<{ [keyId: string]: boolean }>({});
   const [form] = Form.useForm();
 
   // Fetch API keys
@@ -118,25 +117,26 @@ const ProfilePage: React.FC = () => {
       return;
     }
 
-    setRevealingKeys(prev => ({ ...prev, [keyId]: true }));
+    setRevealingKeys((prev) => ({ ...prev, [keyId]: true }));
     try {
       const response = await api.get(`/api-keys/${keyId}/reveal`);
       if (response.data.success) {
-        setRevealedKeys(prev => ({ ...prev, [keyId]: response.data.data.key }));
+        setRevealedKeys((prev) => ({ ...prev, [keyId]: response.data.data.key }));
       } else {
         message.error('Failed to retrieve full API key');
       }
     } catch (error: any) {
       if (error.response?.data?.error?.code === 'LEGACY_API_KEY') {
         message.warning({
-          content: 'This API key was created before the reveal feature was available. Please create a new API key to use the reveal functionality.',
+          content:
+            'This API key was created before the reveal feature was available. Please create a new API key to use the reveal functionality.',
           duration: 6,
         });
       } else {
         message.error('Failed to retrieve full API key');
       }
     } finally {
-      setRevealingKeys(prev => ({ ...prev, [keyId]: false }));
+      setRevealingKeys((prev) => ({ ...prev, [keyId]: false }));
     }
   };
 
@@ -180,7 +180,7 @@ const ProfilePage: React.FC = () => {
                   onClick={() => {
                     if (isRevealed) {
                       // Hide the key by removing it from revealed keys
-                      setRevealedKeys(prev => {
+                      setRevealedKeys((prev) => {
                         const newKeys = { ...prev };
                         delete newKeys[record.id];
                         return newKeys;

@@ -25,11 +25,11 @@ const queryClient = new QueryClient({
 // Ant Design theme configuration
 const antdTheme = {
   token: {
-    colorPrimary: '#0ea5e9',
-    colorSuccess: '#22c55e',
+    colorPrimary: '#25D366',
+    colorSuccess: '#25D366',
     colorWarning: '#f59e0b',
     colorError: '#ef4444',
-    colorInfo: '#0ea5e9',
+    colorInfo: '#128C7E',
     borderRadius: 6,
     fontFamily: 'Inter, system-ui, sans-serif',
   },
@@ -66,7 +66,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               success: {
                 duration: 3000,
                 iconTheme: {
-                  primary: '#22c55e',
+                  primary: '#25D366',
                   secondary: '#fff',
                 },
               },

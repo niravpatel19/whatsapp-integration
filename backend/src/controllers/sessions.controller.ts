@@ -15,6 +15,8 @@ const createSessionSchema = z.object({
     .max(50, 'Device name too long')
     .optional(),
   webhookUrl: z.string().url('Invalid webhook URL').optional(),
+  metadata: z.record(z.any()).optional(), // Allow custom metadata
+  config: z.record(z.any()).optional(), // Allow custom configuration
 });
 
 const updateSessionSchema = z.object({
@@ -24,6 +26,8 @@ const updateSessionSchema = z.object({
     .max(50, 'Device name too long')
     .optional(),
   webhookUrl: z.string().url('Invalid webhook URL').optional(),
+  metadata: z.record(z.any()).optional(), // Allow custom metadata updates
+  config: z.record(z.any()).optional(), // Allow custom configuration updates
 });
 
 const sessionFiltersSchema = z.object({
@@ -84,8 +88,10 @@ export class SessionsController {
         sessionId: session.sessionId,
         status: session.status,
         deviceInfo: session.deviceInfo,
-        phone: session.phone,
+        phone: session.phone, // WhatsApp phone number (populated when connected)
         lastSeenAt: session.lastSeenAt,
+        metadata: session.metadata, // Custom metadata for integrations
+        config: session.config, // Configuration data
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
       }));
@@ -134,10 +140,15 @@ export class SessionsController {
         return;
       }
 
-      const { deviceName, webhookUrl } = validation.data;
+      const { deviceName, webhookUrl, metadata, config } = validation.data;
 
-      // Create session
-      const session = await Session.createSession(req.user!.userId, deviceName || 'WhatsApp Web');
+      // Create session with metadata and config
+      const session = await Session.createSession(
+        req.user!.userId, 
+        deviceName || 'WhatsApp Web',
+        metadata,
+        config
+      );
 
       // Initialize WPPConnect client
       try {
@@ -178,6 +189,9 @@ export class SessionsController {
             sessionId: session.sessionId,
             status: session.status,
             deviceInfo: session.deviceInfo,
+            phone: session.phone, // Will be populated when connected
+            metadata: session.metadata, // Custom metadata
+            config: session.config, // Configuration data
             createdAt: session.createdAt,
           },
         },
@@ -304,10 +318,13 @@ export class SessionsController {
       const session = await Session.findOneAndUpdate(
         {
           sessionId,
+          userId: req.user!.userId, // Ensure user owns the session
         },
         {
           $set: {
             ...(updates.deviceName && { 'deviceInfo.name': updates.deviceName }),
+            ...(updates.metadata && { metadata: updates.metadata }),
+            ...(updates.config && { config: updates.config }),
             updatedAt: new Date(),
           },
         },
@@ -336,6 +353,9 @@ export class SessionsController {
             sessionId: session.sessionId,
             status: session.status,
             deviceInfo: session.deviceInfo,
+            phone: session.phone, // WhatsApp phone number
+            metadata: session.metadata, // Custom metadata
+            config: session.config, // Configuration data
             updatedAt: session.updatedAt,
           },
         },

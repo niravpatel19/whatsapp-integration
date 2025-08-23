@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AuthService, LoginCredentials } from '../services/auth.service';
 import { User } from '../models/User.model';
 import { APIKey } from '../models/APIKey.model';
+import { EventService } from '../services/event.service';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
 
@@ -168,6 +169,25 @@ export class AuthController {
       const result = await AuthService.authenticateUser(credentials, ipAddress, userAgent);
       
       if (!result.success) {
+        // Record failed login event
+        try {
+          // Try to find user by email for event recording
+          const user = await User.findByEmail(credentials.email);
+          if (user) {
+            await EventService.recordLogin(
+              user._id.toString(),
+              'password',
+              false,
+              ipAddress,
+              userAgent,
+              result.error,
+              req.headers['x-request-id'] as string
+            );
+          }
+        } catch (eventError) {
+          logger.error('Failed to record failed login event:', eventError);
+        }
+        
         const statusCode = result.requiresTwoFA ? 200 : 401;
         res.status(statusCode).json({
           success: false,
@@ -197,6 +217,22 @@ export class AuthController {
       res.cookie('refreshToken', result.tokens!.refreshToken, cookieOptions);
       
       logger.info(`User logged in successfully: ${result.user!.email}`);
+      
+      // Record login event
+      try {
+        await EventService.recordLogin(
+          result.user!._id.toString(),
+          'password',
+          true,
+          ipAddress,
+          userAgent,
+          undefined,
+          req.headers['x-request-id'] as string
+        );
+      } catch (eventError) {
+        logger.error('Failed to record login event:', eventError);
+        // Don't fail the login if event recording fails
+      }
       
       res.json({
         success: true,
@@ -251,6 +287,25 @@ export class AuthController {
       res.clearCookie('refreshToken');
       
       logger.info(`User logged out: ${req.user?.email || 'unknown'}`);
+      
+      // Record logout event
+      if (req.user?.userId) {
+        try {
+          const ipAddress = req.ip || req.connection.remoteAddress;
+          const userAgent = req.headers['user-agent'];
+          
+          await EventService.recordLogout(
+            req.user.userId,
+            'manual',
+            ipAddress,
+            userAgent,
+            req.headers['x-request-id'] as string
+          );
+        } catch (eventError) {
+          logger.error('Failed to record logout event:', eventError);
+          // Don't fail the logout if event recording fails
+        }
+      }
       
       res.json({
         success: true,

@@ -44,9 +44,7 @@ const LoginPage: React.FC = () => {
             <Title level={2} className="mb-2">
               Welcome Back
             </Title>
-            <Text type="secondary">
-              Sign in to your WhatsApp Integration account
-            </Text>
+            <Text type="secondary">Sign in to your WhatsApp Integration account</Text>
           </div>
 
           {error && (
@@ -112,18 +110,6 @@ const LoginPage: React.FC = () => {
               </Button>
             </Form.Item>
           </Form>
-
-          <Divider>
-            <Text type="secondary" className="text-sm">
-              Demo Account
-            </Text>
-          </Divider>
-
-          <div className="text-center">
-            <Text type="secondary" className="text-sm">
-              Use any email and password to login (demo mode)
-            </Text>
-          </div>
 
           <div className="text-center mt-6 pt-6 border-t border-gray-100">
             <Text type="secondary" className="text-sm">

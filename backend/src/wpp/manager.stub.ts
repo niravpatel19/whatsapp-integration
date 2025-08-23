@@ -2,6 +2,7 @@ import { logger } from '../utils/logger';
 import { Session } from '../models/Session.model';
 import { QREvent } from '../models/QREvent.model';
 import { Event } from '../models/Event.model';
+import { EventService } from '../services/event.service';
 import { SessionStatus, EventType } from '../types/database.types';
 
 export interface WPPConfig {
@@ -131,17 +132,14 @@ export class WPPConnectManager {
         20 // 20 minutes expiration
       );
 
-      // Record event
-      await Event.recordEvent({
+      // Record event with webhook delivery
+      await EventService.recordQRRefresh(
         userId,
         sessionId,
-        type: EventType.QR_REFRESHED,
-        payload: {
-          qrData: mockQRData.substring(0, 50) + '...', // Truncate for logging
-          expiresAt: new Date(Date.now() + 20 * 60 * 1000),
-          tries: 0,
-        },
-      });
+        mockQRData,
+        new Date(Date.now() + 20 * 60 * 1000),
+        0
+      );
 
       logger.info(`Mock QR generated for session: ${sessionId}`);
 
@@ -178,18 +176,15 @@ export class WPPConnectManager {
       if (session) {
         const userId = session.userId.toString();
 
-        // Record connection event
-        await Event.recordEvent({
+        // Record connection event with webhook delivery
+        await EventService.recordSessionStateChange(
           userId,
           sessionId,
-          type: EventType.SESSION_STATE,
-          payload: {
-            oldStatus: 'QR',
-            newStatus: 'CONNECTED',
-            deviceInfo: clientInfo.deviceInfo,
-            phone: clientInfo.phone,
-          },
-        });
+          'QR',
+          'CONNECTED',
+          clientInfo.deviceInfo,
+          clientInfo.phone
+        );
 
         logger.info(`Mock session connected: ${sessionId}`);
       }

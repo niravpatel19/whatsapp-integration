@@ -97,6 +97,7 @@ Thumbs.db
 
 # WPPConnect session data
 backend/sessions/
+backend/simple-sessions/
 backend/tokens/
 
 # Test files
