@@ -13,6 +13,65 @@ This guide covers individual Docker container deployment for production.
 - Frontend: http://82.29.198.95:7810
 - Backend API: http://82.29.198.95:7811
 - Health Check: http://82.29.198.95:7811/health
+- **API Documentation (Swagger)**: http://82.29.198.95:7811/api/docs
+- **OpenAPI Specification**: http://82.29.198.95:7811/api/docs.json
+- **Postman Collection**: http://82.29.198.95:7811/api/postman
+
+## 🔧 Recent Fixes Applied
+
+### ✅ Docker Runtime Issues Fixed (Latest Update)
+
+- **TypeScript Path Aliases**: Resolved `Cannot find module '@/utils/logger'` error
+- **Missing Dependencies**: Added `swagger-jsdoc`, `swagger-ui-express`, `js-yaml` to package.json
+- **Build Process**: Updated with `tsc-alias` to properly resolve `@/*` imports
+- **API Documentation**: Integrated Swagger UI and Postman collection endpoints
+
+### 🛠️ What Was Fixed
+
+1. **Module Resolution Error**: The error `Error: Cannot find module '@/utils/logger'` was caused by TypeScript path aliases not being resolved in the compiled JavaScript
+2. **Missing Swagger Dependencies**: Added all required packages for API documentation
+3. **Build Pipeline**: Enhanced build process to transform path aliases to relative imports
+4. **Database Connection**: Updated Docker MongoDB/Redis URLs from `localhost` to `82.29.198.95`
+5. **Mongoose Index Warnings**: Fixed duplicate schema index definitions in all models
+
+### 🗄️ Database Configuration Required
+
+**Before running the containers, ensure MongoDB and Redis are accessible:**
+
+```bash
+# MongoDB should be accessible at:
+mongodb://82.29.198.95:27017
+
+# Redis should be accessible at:
+redis://82.29.198.95:6379
+```
+
+**Alternative: Use Docker Compose for databases:**
+
+```bash
+# Create a docker-compose.yml for databases
+version: '3.8'
+services:
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=whatsapp-integration-prod
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mongodb_data:
+  redis_data:
+```
 
 ## 📦 Individual Container Deployment
 

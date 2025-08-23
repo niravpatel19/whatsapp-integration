@@ -21,6 +21,7 @@ import { SecurityMiddleware } from './middleware/security.middleware';
 import { setupSocketIO } from './socket/server';
 import { WPPConnectManager, IWPPConnectManager } from './wpp/manager.factory';
 import { socketIOService } from './services/socketio.service';
+import { setupSwagger } from './config/swagger';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
@@ -96,6 +97,9 @@ class Application {
     // Health check (no rate limiting)
     this.app.use('/health', healthRoutes);
     this.app.use('/ready', healthRoutes);
+
+    // Setup Swagger documentation
+    setupSwagger(this.app);
 
     // API routes
     this.app.use('/api/v1/auth', authRoutes);
