@@ -20,6 +20,10 @@ import {
   PlusOutlined,
   SettingOutlined,
   ReloadOutlined,
+  ApiOutlined,
+  FileTextOutlined,
+  CloudDownloadOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useDashboard } from '../hooks/useDashboard';
@@ -40,6 +44,17 @@ const DashboardPage: React.FC = () => {
   };
 
   const recentActivity = data?.recentActivity || [];
+
+  // Build documentation links based on API base URL
+  const API_BASE_URL =
+    (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001/api/v1';
+  const SERVER_BASE_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  const docsLinks = {
+    swagger: `${SERVER_BASE_URL}/api/docs`,
+    openapi: `${SERVER_BASE_URL}/api/docs.json`,
+    postman: `${SERVER_BASE_URL}/api/postman`,
+    info: `${SERVER_BASE_URL}/api/info`,
+  };
 
   return (
     <Layout className="min-h-screen">
@@ -144,10 +159,10 @@ const DashboardPage: React.FC = () => {
                 </Col>
               </Row>
 
-              <Row gutter={[16, 16]}>
+              <Row gutter={[16, 16]} align="top">
                 {/* Quick Actions */}
                 <Col xs={24} lg={8}>
-                  <Card title="Quick Actions" className="h-full">
+                  <Card title="Quick Actions">
                     <Space direction="vertical" className="w-full" size="middle">
                       <Button
                         type="primary"
@@ -173,7 +188,7 @@ const DashboardPage: React.FC = () => {
 
                 {/* Recent Activity */}
                 <Col xs={24} lg={16}>
-                  <Card title="Recent Activity" className="h-full">
+                  <Card title="Recent Activity">
                     {recentActivity.length > 0 ? (
                       <Timeline
                         mode="left"
@@ -200,6 +215,48 @@ const DashboardPage: React.FC = () => {
                         <Text type="secondary">No recent activity</Text>
                       </div>
                     )}
+                  </Card>
+                </Col>
+              </Row>
+
+              {/* API Documentation Links - full width */}
+              <Row gutter={[16, 16]} className="mt-4">
+                <Col xs={24}>
+                  <Card title="API Documentation">
+                    <Space direction="horizontal" className="w-full flex-wrap" size="middle">
+                      <Button
+                        icon={<ApiOutlined />}
+                        href={docsLinks.swagger}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Swagger UI
+                      </Button>
+                      <Button
+                        icon={<FileTextOutlined />}
+                        href={docsLinks.openapi}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        OpenAPI JSON
+                      </Button>
+                      <Button
+                        icon={<CloudDownloadOutlined />}
+                        href={docsLinks.postman}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Postman Collection
+                      </Button>
+                      <Button
+                        icon={<InfoCircleOutlined />}
+                        href={docsLinks.info}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        API Info
+                      </Button>
+                    </Space>
                   </Card>
                 </Col>
               </Row>

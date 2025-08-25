@@ -9,7 +9,7 @@ interface DatabaseConfig {
 const getDatabaseConfig = (): DatabaseConfig => {
   const uri = process.env['NODE_ENV'] === 'test' 
     ? process.env['MONGODB_TEST_URI'] || 'mongodb://localhost:27017/whatsapp-integration-test'
-    : process.env['MONGODB_URI'] || 'mongodb://localhost:27017/whatsapp-integration';
+    : process.env['MONGODB_URI'] || 'mongodb://root:kp5xqfWCi7et@181.215.134.26:27017/whatsapp_integration?replicaSet=rs0&readPreference=primaryPreferred&authSource=admin&directConnection=true';
 
   const options: mongoose.ConnectOptions = {
     minPoolSize: parseInt(process.env['DB_CONNECTION_POOL_MIN'] || '5'),

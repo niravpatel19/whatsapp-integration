@@ -91,6 +91,16 @@
   background: #f9fafb !important;
 }
 
+/* Ensure header grows to fit content (prevents clipping/overlap) */
+ .ant-layout-header {
+  height: auto !important;
+  line-height: normal !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  position: static !important;
+ }
+
 .ant-layout-sider {
   background: #ffffff !important;
   border-right: 1px solid #e5e7eb !important;

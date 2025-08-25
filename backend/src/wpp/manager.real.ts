@@ -61,6 +61,8 @@ export class WPPConnectManager {
   private clients: Map<string, ClientInfo> = new Map();
   private isInitialized = false;
   private sessionsPath: string;
+  private initializationQueue: Map<string, Promise<void>> = new Map();
+  private maxConcurrentInitializations = parseInt(process.env.WPP_MAX_CONCURRENT_INIT || '2');
 
   private constructor() {
     // Create sessions directory for storing WhatsApp session data
@@ -85,14 +87,33 @@ export class WPPConnectManager {
 
     logger.info('Initializing WPPConnect Manager');
 
-    // Restore existing sessions after restart (using in-memory approach)
-    await this.restoreExistingSessions();
-
-    // Start health monitoring
+    // Start health monitoring first
     this.startHealthMonitoring();
 
     this.isInitialized = true;
     logger.info('WPPConnect Manager initialization completed');
+
+    // Restore sessions in background (non-blocking)
+    this.restoreExistingSessionsAsync();
+  }
+
+  /**
+   * Restore existing sessions in background (non-blocking)
+   */
+  private restoreExistingSessionsAsync(): void {
+    // Check if session restoration should be disabled for faster startup
+    const skipRestore = process.env.WPP_SKIP_RESTORE === 'true';
+    const restoreDelay = parseInt(process.env.WPP_RESTORE_DELAY || '2000'); // 2 seconds default
+
+    if (skipRestore) {
+      logger.info('Session restoration skipped (WPP_SKIP_RESTORE=true)');
+      return;
+    }
+
+    // Run in background without blocking startup
+    setTimeout(async () => {
+      await this.restoreExistingSessions();
+    }, restoreDelay);
   }
 
   /**
@@ -307,9 +328,30 @@ export class WPPConnectManager {
   }
 
   async initializeClient(sessionId: string, config: WPPConfig): Promise<void> {
-    logger.info(`Initializing WPP client: ${sessionId}`, config);
+    // Check if already initializing
+    if (this.initializationQueue.has(sessionId)) {
+      logger.info(`Session ${sessionId} already initializing, waiting...`);
+      return this.initializationQueue.get(sessionId)!;
+    }
+
+    // Create initialization promise
+    const initPromise = this.performInitialization(sessionId, config);
+    this.initializationQueue.set(sessionId, initPromise);
 
     try {
+      await initPromise;
+    } finally {
+      this.initializationQueue.delete(sessionId);
+    }
+  }
+
+  private async performInitialization(sessionId: string, config: WPPConfig): Promise<void> {
+    logger.info(`Initializing WPP client: ${sessionId}`);
+
+    try {
+      // Wait if too many concurrent initializations
+      await this.waitForInitializationSlot();
+
       // Create in-memory client info first (like working demo)
       const clientInfo: ClientInfo = {
         sessionId,
@@ -338,6 +380,16 @@ export class WPPConnectManager {
         clientInfo.errorCount++;
         clientInfo.isConnecting = false;
       }
+      throw error;
+    }
+  }
+
+  private async waitForInitializationSlot(): Promise<void> {
+    while (this.initializationQueue.size >= this.maxConcurrentInitializations) {
+      logger.info(
+        `Waiting for initialization slot (${this.initializationQueue.size}/${this.maxConcurrentInitializations})`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
@@ -350,23 +402,80 @@ export class WPPConnectManager {
       throw new Error('Client info not found in memory');
     }
 
-    // Create WhatsApp client using the exact working demo configuration
-    const client = await create({
-      session: sessionId,
-      catchQR: (base64Qr: string, asciiQR: string, attempts: number) => {
+    // Create WhatsApp client using the correct WPPConnect API
+    const client = await create(
+      sessionId,
+      (base64Qr: string, asciiQR: string, attempts: number) => {
         this.handleQRCode(sessionId, base64Qr, attempts);
       },
-      statusFind: (statusSession: string, session: string) => {
+      (statusSession: string, session: string) => {
         this.handleStatusChange(sessionId, statusSession);
       },
-      headless: true,
-      logQR: false,
-      autoClose: 0, // Disable auto-close completely
-      browserArgs: ['--no-sandbox', '--disable-setuid-sandbox'],
-      puppeteerOptions: {
-        userDataDir: path.join(this.sessionsPath, sessionId),
-      },
-    });
+      undefined, // onLoadingScreen
+      undefined, // catchLinkCode
+      {
+        headless: true,
+        devtools: false,
+        useChrome: true,
+        debug: false,
+        logQR: false,
+        browserWS: '',
+        browserArgs: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-images',
+          '--disable-javascript',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-web-security',
+          '--aggressive-cache-discard',
+          '--memory-pressure-off',
+          '--max_old_space_size=4096',
+        ],
+        puppeteerOptions: {
+          userDataDir: path.join(this.sessionsPath, sessionId),
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-images',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--disable-translate',
+            '--disable-web-security',
+            '--aggressive-cache-discard',
+            '--memory-pressure-off',
+            '--max_old_space_size=4096',
+          ],
+          timeout: parseInt(process.env.WPP_BROWSER_TIMEOUT || '30000'),
+          slowMo: 0, // No artificial delays
+        },
+        autoClose: 0, // Disable auto-close completely
+        createPathFileToken: false,
+      }
+    );
 
     clientInfo.client = client;
     clientInfo.isConnecting = false;
@@ -621,25 +730,12 @@ export class WPPConnectManager {
         break;
 
       case 'desconnectedMobile':
-        // This is just an initial status from WPPConnect - don't treat as error
-        // Keep current status or set to QR if we have QR data
-        if (clientInfo.qrData && clientInfo.qrExpiresAt && clientInfo.qrExpiresAt > new Date()) {
-          newStatus = SessionStatus.QR;
-          clientInfo.status = 'QR';
-        } else {
-          newStatus = SessionStatus.PENDING;
-          clientInfo.status = 'INITIALIZING';
-        }
-        break;
-
-      case 'qrReadError':
-      case 'autocloseCalled':
-      case 'auth_failure':
-        newStatus = SessionStatus.ERROR;
-        clientInfo.status = 'ERROR';
-        clientInfo.errorCount++;
-        eventPayload.error = status;
-        break;
+      case 'inChat':
+      case 'chatsAvailable':
+        // These are normal WhatsApp statuses - don't change session status
+        // Just log and return without updating database
+        logger.debug(`Ignoring normal WhatsApp status: ${status} for session ${sessionId}`);
+        return;
 
       case 'qrReadSuccess':
       case 'qrRead':
@@ -648,6 +744,23 @@ export class WPPConnectManager {
         clientInfo.status = 'INITIALIZING';
         eventPayload.qrScanned = true;
         break;
+
+      case 'qrReadError':
+      case 'auth_failure':
+        newStatus = SessionStatus.ERROR;
+        clientInfo.status = 'ERROR';
+        clientInfo.errorCount++;
+        eventPayload.error = status;
+        break;
+
+      case 'autocloseCalled':
+        // Don't treat autoclose as error - it might be normal behavior
+        logger.warn(`AutoClose called for session ${sessionId} - attempting recovery`);
+        // Try to recover the session instead of marking as error
+        setTimeout(() => {
+          this.recoverSession(sessionId);
+        }, 5000);
+        return;
 
       default:
         logger.info(`Unhandled status for ${sessionId}: ${status}`);
@@ -662,38 +775,117 @@ export class WPPConnectManager {
     // Background database operations (non-blocking like working demo)
     setImmediate(async () => {
       try {
-        // Get device info for connected sessions
+        // Get device info for connected sessions with retry mechanism
         if (newStatus === SessionStatus.CONNECTED && clientInfo.client) {
-          try {
-            const hostDevice = await clientInfo.client.getHostDevice();
-            if (hostDevice && hostDevice.wid) {
-              const phoneNumber = hostDevice.wid._serialized.split('@')[0];
-              const deviceName = hostDevice.pushname || clientInfo.deviceInfo?.name || 'Unknown';
+          // Try multiple methods to get device info with retries
+          let deviceInfoRetrieved = false;
+          const maxRetries = 3;
 
-              clientInfo.phone = phoneNumber;
-              clientInfo.deviceInfo = {
-                name: deviceName,
-                platform: 'WhatsApp Web',
-                version: 'Unknown',
-                browser: 'Chrome',
-                os: 'Linux',
-              };
+          for (let attempt = 1; attempt <= maxRetries && !deviceInfoRetrieved; attempt++) {
+            try {
+              logger.info(
+                `Attempting to get device info for ${sessionId} (attempt ${attempt}/${maxRetries})`
+              );
 
-              eventPayload = {
-                ...eventPayload,
-                deviceInfo: clientInfo.deviceInfo,
-                phone: clientInfo.phone,
-                hostDevice: {
-                  pushname: hostDevice.pushname,
-                  wid: hostDevice.wid._serialized,
-                },
-              };
+              // Wait a bit for WhatsApp to fully initialize
+              if (attempt > 1) {
+                await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+              }
 
-              // Broadcast updated device info
-              this.broadcastStatusChange(userId, sessionId, newStatus, clientInfo, status);
+              // Try multiple methods to get phone number
+              let phoneNumber = null;
+              let deviceName = clientInfo.deviceInfo?.name || 'Unknown';
+
+              // Method 1: getHostDevice
+              try {
+                const hostDevice = await clientInfo.client.getHostDevice();
+                if (hostDevice && hostDevice.wid) {
+                  phoneNumber = hostDevice.wid._serialized.split('@')[0];
+                  deviceName = hostDevice.pushname || deviceName;
+                  logger.info(`Got device info via getHostDevice for ${sessionId}: ${phoneNumber}`);
+                }
+              } catch (hostDeviceError) {
+                logger.warn(`getHostDevice failed for ${sessionId}:`, hostDeviceError);
+              }
+
+              // Method 2: getWid (alternative method)
+              if (!phoneNumber) {
+                try {
+                  const wid: any = await clientInfo.client.getWid();
+                  if (wid && wid._serialized) {
+                    phoneNumber = wid._serialized.split('@')[0];
+                    logger.info(`Got phone number via getWid for ${sessionId}: ${phoneNumber}`);
+                  }
+                } catch (widError) {
+                  logger.warn(`getWid failed for ${sessionId}:`, widError);
+                }
+              }
+
+              // Method 3: Try to get from session info
+              if (!phoneNumber) {
+                try {
+                  const sessionInfo: any = await clientInfo.client.getSessionTokenBrowser();
+                  if (sessionInfo && sessionInfo.me) {
+                    phoneNumber = sessionInfo.me.split('@')[0];
+                    logger.info(
+                      `Got phone number via session info for ${sessionId}: ${phoneNumber}`
+                    );
+                  }
+                } catch (sessionError) {
+                  logger.warn(`Session info failed for ${sessionId}:`, sessionError);
+                }
+              }
+
+              if (phoneNumber) {
+                // Format phone number properly
+                const formattedPhone = phoneNumber.startsWith('+')
+                  ? phoneNumber
+                  : `+${phoneNumber}`;
+
+                clientInfo.phone = formattedPhone;
+                clientInfo.deviceInfo = {
+                  name: deviceName,
+                  platform: 'WhatsApp Web',
+                  version: 'Unknown',
+                  browser: 'Chrome',
+                  os: 'Linux',
+                };
+
+                eventPayload = {
+                  ...eventPayload,
+                  deviceInfo: clientInfo.deviceInfo,
+                  phone: clientInfo.phone,
+                };
+
+                deviceInfoRetrieved = true;
+                logger.info(
+                  `Device info successfully retrieved for ${sessionId}: ${formattedPhone}`
+                );
+
+                // Broadcast updated device info
+                this.broadcastStatusChange(userId, sessionId, newStatus, clientInfo, status);
+                break;
+              }
+            } catch (deviceError) {
+              logger.warn(
+                `Device info retrieval attempt ${attempt} failed for ${sessionId}:`,
+                deviceError
+              );
             }
-          } catch (deviceError) {
-            logger.warn(`Failed to get device info for ${sessionId}:`, deviceError);
+          }
+
+          if (!deviceInfoRetrieved) {
+            logger.error(
+              `Failed to retrieve device info for ${sessionId} after ${maxRetries} attempts`
+            );
+            // Still update lastSeenAt even if we couldn't get phone number
+            clientInfo.deviceInfo = clientInfo.deviceInfo || {
+              name: 'Unknown',
+              platform: 'WhatsApp Web',
+              version: 'Unknown',
+              browser: 'Chrome',
+              os: 'Linux',
+            };
           }
         }
 
@@ -705,23 +897,31 @@ export class WPPConnectManager {
           logger.error(`Failed to update session status in database for ${sessionId}:`, dbError);
         }
 
-        // Update device info in database if available
-        if (clientInfo.deviceInfo && clientInfo.phone) {
+        // Always update lastSeenAt for connected sessions, and device info if available
+        if (newStatus === SessionStatus.CONNECTED) {
           try {
-            await Session.findOneAndUpdate(
-              { sessionId },
-              {
-                $set: {
-                  phone: clientInfo.phone,
-                  deviceInfo: clientInfo.deviceInfo,
-                  lastSeenAt: new Date(),
-                },
-              }
-            );
-            logger.debug(`Device info updated in database for ${sessionId}`);
+            const updateData: any = {
+              lastSeenAt: new Date(),
+            };
+
+            // Add phone and device info if available
+            if (clientInfo.phone) {
+              updateData.phone = clientInfo.phone;
+            }
+            if (clientInfo.deviceInfo) {
+              updateData.deviceInfo = clientInfo.deviceInfo;
+            }
+
+            await Session.findOneAndUpdate({ sessionId }, { $set: updateData });
+
+            logger.debug(`Session data updated in database for ${sessionId}:`, {
+              phone: clientInfo.phone || 'Not retrieved',
+              lastSeenAt: updateData.lastSeenAt,
+              deviceName: clientInfo.deviceInfo?.name || 'Unknown',
+            });
           } catch (deviceUpdateError) {
             logger.error(
-              `Failed to update device info in database for ${sessionId}:`,
+              `Failed to update session data in database for ${sessionId}:`,
               deviceUpdateError
             );
           }
@@ -866,6 +1066,53 @@ export class WPPConnectManager {
       if (!session) return;
 
       const userId = session.userId.toString();
+      const clientInfo = this.clients.get(sessionId);
+
+      // Try to extract phone number from message metadata if not already set
+      if (clientInfo && (!clientInfo.phone || clientInfo.phone === 'Unknown')) {
+        try {
+          // Check if message has 'to' field which might contain our phone number
+          if (message.to && message.to.includes('@')) {
+            const phoneFromMessage = message.to.split('@')[0];
+            if (phoneFromMessage && phoneFromMessage.length > 5) {
+              const formattedPhone = phoneFromMessage.startsWith('+')
+                ? phoneFromMessage
+                : `+${phoneFromMessage}`;
+
+              logger.info(
+                `Extracted phone number from message metadata for ${sessionId}: ${formattedPhone}`
+              );
+
+              // Update in-memory client info
+              clientInfo.phone = formattedPhone;
+
+              // Update database
+              await Session.findOneAndUpdate(
+                { sessionId },
+                {
+                  $set: {
+                    phone: formattedPhone,
+                    lastSeenAt: new Date(),
+                  },
+                }
+              );
+
+              logger.info(`Phone number updated in database for ${sessionId}: ${formattedPhone}`);
+            }
+          }
+        } catch (phoneExtractionError) {
+          logger.warn(
+            `Failed to extract phone from message for ${sessionId}:`,
+            phoneExtractionError
+          );
+        }
+      }
+
+      // Update lastSeenAt for any message activity
+      if (clientInfo) {
+        clientInfo.lastActivity = new Date();
+        this.updateLastSeenAt(sessionId);
+      }
 
       // Record incoming message event
       await EventService.recordEvent({
@@ -927,7 +1174,13 @@ export class WPPConnectManager {
         // Record event with webhook delivery
         switch (eventType) {
           case EventType.MESSAGE_SENT:
-            await EventService.recordMessageSent(userId, sessionId, message.messageId, message.to, message.type);
+            await EventService.recordMessageSent(
+              userId,
+              sessionId,
+              message.messageId,
+              message.to,
+              message.type
+            );
             break;
           case EventType.MESSAGE_DELIVERED:
             await EventService.recordMessageDelivered(userId, sessionId, message.messageId);
@@ -1114,11 +1367,121 @@ export class WPPConnectManager {
       const result = await clientInfo.client.sendText(formattedTo, content);
       clientInfo.messageCount++;
       clientInfo.lastActivity = new Date();
+
+      // Update lastSeenAt in database when sending messages
+      this.updateLastSeenAt(sessionId);
+
       return result;
     } catch (error) {
       logger.error(`Failed to send text message:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Update lastSeenAt timestamp in database
+   */
+  private async updateLastSeenAt(sessionId: string): Promise<void> {
+    try {
+      await Session.findOneAndUpdate({ sessionId }, { $set: { lastSeenAt: new Date() } });
+    } catch (error) {
+      logger.warn(`Failed to update lastSeenAt for ${sessionId}:`, error);
+    }
+  }
+
+  /**
+   * Manually set phone number for a session
+   */
+  async setSessionPhone(sessionId: string, phoneNumber: string): Promise<void> {
+    try {
+      const clientInfo = this.clients.get(sessionId);
+      const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+
+      // Update in-memory client info
+      if (clientInfo) {
+        clientInfo.phone = formattedPhone;
+      }
+
+      // Update database
+      await Session.findOneAndUpdate(
+        { sessionId },
+        {
+          $set: {
+            phone: formattedPhone,
+            lastSeenAt: new Date(),
+          },
+        }
+      );
+
+      logger.info(`Phone number manually set for ${sessionId}: ${formattedPhone}`);
+    } catch (error) {
+      logger.error(`Failed to set phone number for ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Try alternative methods to get phone number
+   */
+  async tryGetPhoneNumber(sessionId: string): Promise<string | null> {
+    const clientInfo = this.clients.get(sessionId);
+    if (!clientInfo || !clientInfo.client) {
+      return null;
+    }
+
+    const methods = [
+      // Method 1: Check if client has a phone property
+      async () => {
+        try {
+          const phone = (clientInfo.client as any).phone;
+          if (phone) return phone;
+        } catch (error) {
+          logger.debug(`Phone property check failed for ${sessionId}:`, error);
+        }
+        return null;
+      },
+
+      // Method 2: Try to get from connection info
+      async () => {
+        try {
+          const info = await clientInfo.client.getConnectionState();
+          if (info && (info as any).phone) {
+            return (info as any).phone;
+          }
+        } catch (error) {
+          logger.debug(`Connection state check failed for ${sessionId}:`, error);
+        }
+        return null;
+      },
+
+      // Method 3: Try to send a test message to ourselves to capture the number
+      async () => {
+        try {
+          // This is a bit hacky but might work
+          const testResult = await clientInfo.client.sendText('status@broadcast', 'test');
+          if (testResult && testResult.from) {
+            return testResult.from.split('@')[0];
+          }
+        } catch (error) {
+          logger.debug(`Test message method failed for ${sessionId}:`, error);
+        }
+        return null;
+      },
+    ];
+
+    for (let i = 0; i < methods.length; i++) {
+      try {
+        const result = await methods[i]();
+        if (result) {
+          logger.info(`Phone number retrieved using method ${i + 1} for ${sessionId}: ${result}`);
+          return result;
+        }
+      } catch (error) {
+        logger.debug(`Method ${i + 1} failed for ${sessionId}:`, error);
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -1408,15 +1771,15 @@ export class WPPConnectManager {
   private healthCheckInterval?: NodeJS.Timeout;
 
   private startHealthMonitoring(): void {
-    // Run health check every 5 minutes
+    // Run health check every 15 minutes (less aggressive)
     this.healthCheckInterval = setInterval(
       async () => {
         await this.performHealthCheck();
       },
-      5 * 60 * 1000
+      15 * 60 * 1000
     );
 
-    logger.info('Session health monitoring started');
+    logger.info('Session health monitoring started (15 minute intervals)');
   }
 
   private async performHealthCheck(): Promise<void> {
@@ -1429,38 +1792,45 @@ export class WPPConnectManager {
 
       for (const [sessionId, clientInfo] of this.clients.entries()) {
         try {
-          // Check if client is stale (no activity for 30 minutes)
+          // Check if client is stale (no activity for 2 hours - more lenient)
           const timeSinceActivity = Date.now() - clientInfo.lastActivity.getTime();
-          const isStale = timeSinceActivity > 30 * 60 * 1000; // 30 minutes
+          const isStale = timeSinceActivity > 2 * 60 * 60 * 1000; // 2 hours
 
           if (isStale) {
             staleClients.push(sessionId);
             continue;
           }
 
-          // Check client health
+          // Check client health - be more lenient
           if (clientInfo.client && clientInfo.status === 'CONNECTED') {
             try {
-              // Try to get connection state
+              // Try to get connection state with longer timeout
               const state = await Promise.race([
                 clientInfo.client.getConnectionState(),
                 new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error('Health check timeout')), 10000)
+                  setTimeout(() => reject(new Error('Health check timeout')), 30000)
                 ),
               ]);
 
-              if (state === 'CONNECTED' || state === 'OPENING') {
+              if (state === 'CONNECTED' || state === 'OPENING' || state === 'PAIRING') {
                 healthyClients.push(sessionId);
+                // Update last activity to prevent false positives
+                clientInfo.lastActivity = new Date();
+
+                // Update lastSeenAt in database for connected sessions
+                this.updateLastSeenAt(sessionId);
               } else {
-                unhealthyClients.push(sessionId);
-                logger.warn(`Unhealthy session detected: ${sessionId}, state: ${state}`);
+                // Don't immediately mark as unhealthy, give it another chance
+                logger.warn(`Session state check: ${sessionId}, state: ${state}`);
+                healthyClients.push(sessionId); // Keep as healthy for now
               }
             } catch (healthError) {
-              unhealthyClients.push(sessionId);
+              // Don't immediately mark as unhealthy on health check failure
               logger.warn(`Health check failed for session: ${sessionId}`, healthError);
+              healthyClients.push(sessionId); // Keep as healthy for now
             }
-          } else if (clientInfo.status === 'ERROR' && clientInfo.errorCount > 5) {
-            // Too many errors, mark for cleanup
+          } else if (clientInfo.status === 'ERROR' && clientInfo.errorCount > 10) {
+            // Increase error threshold before cleanup
             unhealthyClients.push(sessionId);
           }
         } catch (error) {

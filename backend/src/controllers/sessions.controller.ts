@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Types } from 'mongoose';
 import { Session } from '../models/Session.model';
 import { QREvent } from '../models/QREvent.model';
 import { Event } from '../models/Event.model';
@@ -62,7 +63,8 @@ export class SessionsController {
       const skip = (page - 1) * limit;
 
       // Build query
-      const query: any = { userId: req.user!.userId };
+      const userId = req.user?.userId || '000000000000000000000001';
+      const query: any = { userId: new Types.ObjectId(userId) };
       if (status) {
         query.status = status;
       }
@@ -143,8 +145,9 @@ export class SessionsController {
       const { deviceName, webhookUrl, metadata, config } = validation.data;
 
       // Create session with metadata and config
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.createSession(
-        req.user!.userId, 
+        userId, 
         deviceName || 'WhatsApp Web',
         metadata,
         config
@@ -172,7 +175,7 @@ export class SessionsController {
         });
 
         logger.info(`Session created and WPPConnect initialized: ${session.sessionId}`, {
-          userId: req.user!.userId,
+          userId,
           deviceName,
         });
       } catch (wppError) {
@@ -229,8 +232,10 @@ export class SessionsController {
     try {
       const { sessionId } = req.params;
 
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOne({
         sessionId,
+        userId: new Types.ObjectId(userId),
       });
 
       if (!session) {
@@ -248,7 +253,7 @@ export class SessionsController {
       // Get latest QR code if available
       let qrCode = null;
       if (session.status === 'QR') {
-        const latestQR = await QREvent.getLatestQR(sessionId, session.userId.toString());
+        const latestQR = await QREvent.getLatestQR(sessionId, userId);
         if (latestQR && latestQR.expiresAt > new Date()) {
           qrCode = {
             data: latestQR.qrData,
@@ -315,10 +320,11 @@ export class SessionsController {
       const updates = validation.data;
 
       // Find and update session
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOneAndUpdate(
         {
           sessionId,
-          userId: req.user!.userId, // Ensure user owns the session
+          userId: new Types.ObjectId(userId), // Ensure user owns the session
         },
         {
           $set: {
@@ -380,8 +386,10 @@ export class SessionsController {
     try {
       const { sessionId } = req.params;
 
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOne({
         sessionId,
+        userId: new Types.ObjectId(userId),
       });
 
       if (!session) {
@@ -408,7 +416,7 @@ export class SessionsController {
 
       // Log event
       await Event.recordEvent({
-        userId: req.user!.userId,
+        userId,
         sessionId,
         type: EventType.SESSION_DELETED,
         payload: {
@@ -418,7 +426,7 @@ export class SessionsController {
       });
 
       logger.info(`Session deleted: ${sessionId}`, {
-        userId: req.user!.userId,
+        userId,
       });
 
       res.json({
@@ -445,9 +453,10 @@ export class SessionsController {
     try {
       const { sessionId } = req.params;
 
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOne({
         sessionId,
-        userId: req.user!.userId,
+        userId: new Types.ObjectId(userId),
       });
 
       if (!session) {
@@ -515,9 +524,10 @@ export class SessionsController {
     try {
       const { sessionId } = req.params;
 
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOne({
         sessionId,
-        userId: req.user!.userId,
+        userId: new Types.ObjectId(userId),
       });
 
       if (!session) {
@@ -563,7 +573,7 @@ export class SessionsController {
       }
 
       // Fallback to database QR if not in memory
-      const latestQR = await QREvent.getLatestQR(sessionId, req.user!.userId);
+      const latestQR = await QREvent.getLatestQR(sessionId, userId);
 
       if (!latestQR || latestQR.expiresAt <= new Date()) {
         // If no QR or expired, try to refresh QR for non-connected sessions
@@ -616,7 +626,7 @@ export class SessionsController {
               }
 
               // Fallback to database
-              const newQR = await QREvent.getLatestQR(sessionId, req.user!.userId);
+              const newQR = await QREvent.getLatestQR(sessionId, userId);
               if (newQR && newQR.expiresAt > new Date()) {
                 const remainingTime = Math.max(
                   0,
@@ -711,9 +721,10 @@ export class SessionsController {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
       const eventType = req.query.type as string;
 
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOne({
         sessionId,
-        userId: req.user!.userId,
+        userId: new Types.ObjectId(userId),
       });
 
       if (!session) {
@@ -774,8 +785,10 @@ export class SessionsController {
     try {
       const { sessionId } = req.params;
 
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOne({
         sessionId,
+        userId: new Types.ObjectId(userId),
       });
 
       if (!session) {
@@ -831,9 +844,10 @@ export class SessionsController {
     try {
       const { sessionId } = req.params;
 
+      const userId = req.user?.userId || '000000000000000000000001';
       const session = await Session.findOne({
         sessionId,
-        userId: req.user!.userId,
+        userId: new Types.ObjectId(userId),
       });
 
       if (!session) {

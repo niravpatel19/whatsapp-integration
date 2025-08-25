@@ -164,9 +164,11 @@ Production logs are written to:
 
 For production deployment, see:
 
-- **[Deployment Guide](../docs/deployment/DEPLOYMENT.md)** - Complete deployment instructions
-- **[Production Checklist](../docs/deployment/PRODUCTION_CHECKLIST.md)** - Pre-deployment checklist
+- **[Deployment Guide](./docs/deployment/DEPLOYMENT.md)** - Complete deployment instructions
+- **[Production Checklist](./docs/deployment/PRODUCTION_CHECKLIST.md)** - Pre-deployment checklist
 - **[Environment Example](./env.production.example)** - Production environment variables
+- **[API Documentation](./docs/api/README.md)** - OpenAPI specification and documentation
+- **[Postman Collection](./docs/postman/)** - Ready-to-use API testing collection
 
 ### Docker Deployment
 
