@@ -34,7 +34,7 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 overflow-hidden">
       <div className="max-w-md w-full">
         <Card className="shadow-lg border-0">
           <div className="text-center mb-8">

@@ -19,8 +19,24 @@ export enum SessionStatus {
   QR = 'QR',
   CONNECTED = 'CONNECTED',
   DISCONNECTED = 'DISCONNECTED',
+  RECONNECTING = 'RECONNECTING', // New: Attempting to reconnect
   EXPIRED = 'EXPIRED',
   ERROR = 'ERROR'
+}
+
+// Notification related types
+export enum NotificationStatus {
+  PENDING = 'PENDING',
+  SENT = 'SENT',
+  FAILED = 'FAILED',
+  SUPPRESSED = 'SUPPRESSED' // Suppressed to avoid spam
+}
+
+export enum NotificationType {
+  SESSION_DISCONNECTED = 'SESSION_DISCONNECTED',
+  SESSION_RECONNECTED = 'SESSION_RECONNECTED',
+  SESSION_ERROR = 'SESSION_ERROR',
+  SESSION_EXPIRED = 'SESSION_EXPIRED'
 }
 
 export interface DeviceInfo {

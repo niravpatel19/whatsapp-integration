@@ -77,13 +77,37 @@ const options: swaggerJSDoc.Options = {
   ],
 };
 
-// Try to load the existing OpenAPI spec if available
-const openApiPath = path.join(__dirname, '../docs/api/openapi.yaml');
+// Resolve docs paths robustly for different runtimes (src, dist, Docker, monorepo root)
+function resolveFirstExisting(pathsToCheck: string[]): string | null {
+  for (const p of pathsToCheck) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+const openApiCandidates = [
+  // When running from project/backend root
+  path.join(process.cwd(), 'docs/api/openapi.yaml'),
+  // When running from monorepo root
+  path.join(process.cwd(), 'backend/docs/api/openapi.yaml'),
+  // Compiled dist -> look relative to dist
+  path.join(__dirname, '../docs/api/openapi.yaml'),
+  // ts-node src -> up two levels
+  path.join(__dirname, '../../docs/api/openapi.yaml'),
+];
+
+const postmanCandidates = [
+  path.join(process.cwd(), 'docs/postman/WhatsApp-Integration-API.postman_collection.json'),
+  path.join(process.cwd(), 'backend/docs/postman/WhatsApp-Integration-API.postman_collection.json'),
+  path.join(__dirname, '../docs/postman/WhatsApp-Integration-API.postman_collection.json'),
+  path.join(__dirname, '../../docs/postman/WhatsApp-Integration-API.postman_collection.json'),
+];
+
+const openApiPath = resolveFirstExisting(openApiCandidates);
 let spec: any;
 
 try {
-  if (fs.existsSync(openApiPath)) {
-    // If we have the full OpenAPI spec, use it
+  if (openApiPath) {
     const yaml = require('js-yaml');
     const yamlContent = fs.readFileSync(openApiPath, 'utf8');
     spec = yaml.load(yamlContent);
@@ -101,14 +125,16 @@ try {
         },
       ];
     }
-    console.log('✅ Loaded OpenAPI specification from docs/api/openapi.yaml');
+    console.log(`✅ Loaded OpenAPI specification from ${openApiPath}`);
   } else {
-    // Fallback to generated spec
-    console.log('📚 Using generated OpenAPI specification (docs folder not available)');
+    console.log('📚 Using generated OpenAPI specification (openapi.yaml not found)');
     spec = swaggerJSDoc(options);
   }
 } catch (error) {
-  console.warn('⚠️  Could not load OpenAPI spec from YAML, using generated spec:', error.message);
+  console.warn(
+    '⚠️  Could not load OpenAPI spec from YAML, using generated spec:',
+    (error as Error).message
+  );
   spec = swaggerJSDoc(options);
 }
 
@@ -154,11 +180,8 @@ export const setupSwagger = (app: Application): void => {
   // Postman collection
   app.get('/api/postman', (_req, res) => {
     try {
-      const postmanPath = path.join(
-        __dirname,
-        '../docs/postman/WhatsApp-Integration-API.postman_collection.json'
-      );
-      if (fs.existsSync(postmanPath)) {
+      const postmanPath = resolveFirstExisting(postmanCandidates);
+      if (postmanPath) {
         const postmanCollection = JSON.parse(fs.readFileSync(postmanPath, 'utf8'));
 
         // Update URLs to production
@@ -201,7 +224,7 @@ export const setupSwagger = (app: Application): void => {
           repository: 'https://github.com/your-repo/docs/postman/',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading Postman collection:', error.message);
       res.status(500).json({
         error: 'Error loading Postman collection',

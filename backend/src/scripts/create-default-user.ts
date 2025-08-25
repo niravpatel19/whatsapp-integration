@@ -18,31 +18,30 @@ async function createDefaultUser() {
     logger.info('Connected to MongoDB');
 
     // Check if user already exists
-    const existingUser = await User.findByEmail('nirav.patel@saeculumsolutions.com');
+    const existingUser = await User.findByEmail('nirav12@yopmail.com');
     if (existingUser) {
-      logger.info('User already exists: nirav.patel@saeculumsolutions.com');
+      logger.info('User already exists: nirav12@yopmail.com');
       return;
     }
 
     // Create the default user
     const defaultUser = await User.createUser({
-      email: 'nirav.patel@saeculumsolutions.com',
+      email: 'nirav12@yopmail.com',
       password: 'Test@123',
-      name: 'Nirav Patel'
+      name: 'Nirav Patel',
     });
 
     logger.info('Default user created successfully:', {
       id: defaultUser._id,
       email: defaultUser.email,
       name: defaultUser.name,
-      createdAt: defaultUser.createdAt
+      createdAt: defaultUser.createdAt,
     });
 
     console.log('✅ Default user created successfully!');
-    console.log('📧 Email: nirav.patel@saeculumsolutions.com');
+    console.log('📧 Email: nirav12@yopmail.com');
     console.log('🔑 Password: Test@123');
     console.log('👤 Name: Nirav Patel');
-
   } catch (error) {
     logger.error('Failed to create default user:', error);
     console.error('❌ Failed to create default user:', error);

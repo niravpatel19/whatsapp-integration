@@ -5,6 +5,7 @@ import { QREvent } from '../models/QREvent.model';
 import { Event } from '../models/Event.model';
 import { Message } from '../models/Message.model';
 import { EventService } from '../services/event.service';
+import { WPPNotificationHandler } from './notification.handler';
 import { SessionStatus, EventType, MessageStatus, MessageType } from '../types/database.types';
 import path from 'path';
 import fs from 'fs';
@@ -61,8 +62,8 @@ export class WPPConnectManager {
   private clients: Map<string, ClientInfo> = new Map();
   private isInitialized = false;
   private sessionsPath: string;
-  private initializationQueue: Map<string, Promise<void>> = new Map();
-  private maxConcurrentInitializations = parseInt(process.env.WPP_MAX_CONCURRENT_INIT || '2');
+  // Prevent concurrent client creations for the same session
+  private creatingSessions: Set<string> = new Set();
 
   private constructor() {
     // Create sessions directory for storing WhatsApp session data
@@ -87,33 +88,14 @@ export class WPPConnectManager {
 
     logger.info('Initializing WPPConnect Manager');
 
-    // Start health monitoring first
+    // Restore existing sessions after restart (using in-memory approach)
+    await this.restoreExistingSessions();
+
+    // Start health monitoring
     this.startHealthMonitoring();
 
     this.isInitialized = true;
     logger.info('WPPConnect Manager initialization completed');
-
-    // Restore sessions in background (non-blocking)
-    this.restoreExistingSessionsAsync();
-  }
-
-  /**
-   * Restore existing sessions in background (non-blocking)
-   */
-  private restoreExistingSessionsAsync(): void {
-    // Check if session restoration should be disabled for faster startup
-    const skipRestore = process.env.WPP_SKIP_RESTORE === 'true';
-    const restoreDelay = parseInt(process.env.WPP_RESTORE_DELAY || '2000'); // 2 seconds default
-
-    if (skipRestore) {
-      logger.info('Session restoration skipped (WPP_SKIP_RESTORE=true)');
-      return;
-    }
-
-    // Run in background without blocking startup
-    setTimeout(async () => {
-      await this.restoreExistingSessions();
-    }, restoreDelay);
   }
 
   /**
@@ -328,30 +310,22 @@ export class WPPConnectManager {
   }
 
   async initializeClient(sessionId: string, config: WPPConfig): Promise<void> {
-    // Check if already initializing
-    if (this.initializationQueue.has(sessionId)) {
-      logger.info(`Session ${sessionId} already initializing, waiting...`);
-      return this.initializationQueue.get(sessionId)!;
+    logger.info(`Initializing WPP client: ${sessionId}`, config);
+
+    // Prevent concurrent inits
+    if (this.creatingSessions.has(sessionId)) {
+      logger.warn(`Initialization already in progress for ${sessionId}, skipping.`);
+      return;
     }
 
-    // Create initialization promise
-    const initPromise = this.performInitialization(sessionId, config);
-    this.initializationQueue.set(sessionId, initPromise);
-
-    try {
-      await initPromise;
-    } finally {
-      this.initializationQueue.delete(sessionId);
+    const existing = this.clients.get(sessionId);
+    if (existing && existing.client && existing.status === 'CONNECTED') {
+      logger.info(`Session ${sessionId} already CONNECTED, skipping re-initialization.`);
+      return;
     }
-  }
 
-  private async performInitialization(sessionId: string, config: WPPConfig): Promise<void> {
-    logger.info(`Initializing WPP client: ${sessionId}`);
-
+    this.creatingSessions.add(sessionId);
     try {
-      // Wait if too many concurrent initializations
-      await this.waitForInitializationSlot();
-
       // Create in-memory client info first (like working demo)
       const clientInfo: ClientInfo = {
         sessionId,
@@ -380,16 +354,8 @@ export class WPPConnectManager {
         clientInfo.errorCount++;
         clientInfo.isConnecting = false;
       }
-      throw error;
-    }
-  }
-
-  private async waitForInitializationSlot(): Promise<void> {
-    while (this.initializationQueue.size >= this.maxConcurrentInitializations) {
-      logger.info(
-        `Waiting for initialization slot (${this.initializationQueue.size}/${this.maxConcurrentInitializations})`
-      );
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } finally {
+      this.creatingSessions.delete(sessionId);
     }
   }
 
@@ -402,80 +368,38 @@ export class WPPConnectManager {
       throw new Error('Client info not found in memory');
     }
 
-    // Create WhatsApp client using the correct WPPConnect API
-    const client = await create(
-      sessionId,
-      (base64Qr: string, asciiQR: string, attempts: number) => {
+    // Ensure session directory exists and clear stale SingletonLock to avoid Chrome profile lock
+    const userDataDir = path.join(this.sessionsPath, sessionId);
+    try {
+      if (!fs.existsSync(userDataDir)) {
+        fs.mkdirSync(userDataDir, { recursive: true });
+      }
+      const singletonLock = path.join(userDataDir, 'SingletonLock');
+      if (fs.existsSync(singletonLock)) {
+        fs.rmSync(singletonLock, { force: true });
+        logger.warn(`Removed stale SingletonLock for session ${sessionId}`);
+      }
+    } catch (fsError) {
+      logger.warn(`Failed to prepare userDataDir for ${sessionId}:`, fsError);
+    }
+
+    // Create WhatsApp client using the exact working demo configuration
+    const client = await create({
+      session: sessionId,
+      catchQR: (base64Qr: string, asciiQR: string, attempts: number) => {
         this.handleQRCode(sessionId, base64Qr, attempts);
       },
-      (statusSession: string, session: string) => {
+      statusFind: (statusSession: string, session: string) => {
         this.handleStatusChange(sessionId, statusSession);
       },
-      undefined, // onLoadingScreen
-      undefined, // catchLinkCode
-      {
-        headless: true,
-        devtools: false,
-        useChrome: true,
-        debug: false,
-        logQR: false,
-        browserWS: '',
-        browserArgs: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-images',
-          '--disable-javascript',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--disable-translate',
-          '--disable-web-security',
-          '--aggressive-cache-discard',
-          '--memory-pressure-off',
-          '--max_old_space_size=4096',
-        ],
-        puppeteerOptions: {
-          userDataDir: path.join(this.sessionsPath, sessionId),
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--disable-extensions',
-            '--disable-plugins',
-            '--disable-images',
-            '--disable-default-apps',
-            '--disable-sync',
-            '--disable-translate',
-            '--disable-web-security',
-            '--aggressive-cache-discard',
-            '--memory-pressure-off',
-            '--max_old_space_size=4096',
-          ],
-          timeout: parseInt(process.env.WPP_BROWSER_TIMEOUT || '30000'),
-          slowMo: 0, // No artificial delays
-        },
-        autoClose: 0, // Disable auto-close completely
-        createPathFileToken: false,
-      }
-    );
+      headless: true,
+      logQR: false,
+      autoClose: 0, // Disable auto-close completely
+      browserArgs: ['--no-sandbox', '--disable-setuid-sandbox'],
+      puppeteerOptions: {
+        userDataDir,
+      },
+    });
 
     clientInfo.client = client;
     clientInfo.isConnecting = false;
@@ -507,80 +431,56 @@ export class WPPConnectManager {
       return;
     }
 
-    // Update in-memory state IMMEDIATELY (like working demo)
-    clientInfo.status = 'QR';
-    clientInfo.lastActivity = new Date();
-
-    // Ensure QR data is properly formatted
-    let formattedQRData = base64Qr;
-    if (!base64Qr.startsWith('data:image/')) {
-      formattedQRData = `data:image/png;base64,${base64Qr}`;
-    }
-
-    // Store QR data in memory for immediate access (like working demo)
-    clientInfo.qrData = formattedQRData;
-    clientInfo.qrAttempts = attempts;
-    clientInfo.qrExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
-    // Get session info for broadcasting
-    const session = await Session.findOne({ sessionId }).select('userId').lean();
-    if (!session) {
-      logger.error(`Session not found in database: ${sessionId}`);
+    // Ignore QR events if session is already connected
+    if (clientInfo.status === 'CONNECTED') {
+      logger.warn(`Ignoring QR event for already CONNECTED session ${sessionId}`);
       return;
     }
 
-    const userId = session.userId.toString();
+    // Persist in-memory QR state
+    clientInfo.qrData = base64Qr;
+    clientInfo.qrAttempts = attempts;
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 20);
+    clientInfo.qrExpiresAt = expiresAt;
+    clientInfo.status = 'QR';
 
-    // IMMEDIATE broadcast (synchronous like working demo - NO await)
-    this.broadcastQRUpdate(userId, sessionId, formattedQRData, attempts);
+    // Broadcast QR update immediately
+    this.broadcastQRUpdate(sessionId, base64Qr, attempts, expiresAt);
 
-    // Background database operations (non-blocking like working demo)
-    setImmediate(async () => {
-      try {
-        // Update session status first
-        await Session.updateStatus(sessionId, SessionStatus.QR);
-
-        // Create QR event
-        await QREvent.createQREvent(userId, sessionId, formattedQRData, 15);
-
-        // Record event with webhook delivery
-        await EventService.recordQRRefresh(
-          userId,
-          sessionId,
-          formattedQRData,
-          new Date(Date.now() + 15 * 60 * 1000),
-          attempts
-        );
-
-        logger.debug(`QR code stored in database for session: ${sessionId}`);
-      } catch (error) {
-        logger.error('Failed to store QR code in database:', error);
+    // Save QR event in DB (best-effort)
+    try {
+      const session = await Session.findOne({ sessionId }).select('userId').lean();
+      if (session) {
+        await QREvent.createQREvent(session.userId.toString(), sessionId, base64Qr, 20);
       }
-    });
+    } catch (error) {
+      logger.warn('Failed to persist QR event:', error);
+    }
   }
 
   /**
    * Immediate QR broadcast (like working demo)
    */
   private broadcastQRUpdate(
-    userId: string,
     sessionId: string,
     qrData: string,
-    attempts: number
+    attempts: number,
+    expiresAt: Date
   ): void {
     try {
       const qrPayload = {
         sessionId,
         qrData,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        expiresAt: expiresAt,
         tries: attempts,
-        remainingTime: 15 * 60,
+        remainingTime: expiresAt.getTime() - Date.now(),
         timestamp: new Date().toISOString(),
       };
 
       // Use setImmediate for immediate broadcast with retry mechanism
       setImmediate(async () => {
-        await this.retryBroadcastQR(userId, sessionId, qrPayload, attempts, 0);
+        await this.retryBroadcastQR(sessionId, qrPayload, attempts, 0);
       });
     } catch (error) {
       logger.error('Failed to setup QR broadcast:', error);
@@ -591,7 +491,6 @@ export class WPPConnectManager {
    * Retry QR broadcast with exponential backoff when Socket.IO is not ready
    */
   private async retryBroadcastQR(
-    userId: string,
     sessionId: string,
     qrPayload: any,
     attempts: number,
@@ -610,7 +509,7 @@ export class WPPConnectManager {
             `Socket.IO not ready, retrying QR broadcast in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries})`
           );
           setTimeout(() => {
-            this.retryBroadcastQR(userId, sessionId, qrPayload, attempts, retryCount + 1);
+            this.retryBroadcastQR(sessionId, qrPayload, attempts, retryCount + 1);
           }, retryDelay);
           return;
         } else {
@@ -620,6 +519,14 @@ export class WPPConnectManager {
           return;
         }
       }
+
+      // Resolve userId for broadcasting to the correct user room
+      const session = await Session.findOne({ sessionId }).select('userId').lean();
+      if (!session) {
+        logger.warn(`Cannot broadcast QR: session not found ${sessionId}`);
+        return;
+      }
+      const userId = session.userId.toString();
 
       // Socket.IO is available - proceed with broadcast
       const qrBroadcastSuccess = socketService.broadcastToUser(userId, 'qr:update', qrPayload);
@@ -641,10 +548,10 @@ export class WPPConnectManager {
       if (retryCount < maxRetries) {
         logger.warn(`QR broadcast failed, retrying in ${retryDelay}ms:`, broadcastError);
         setTimeout(() => {
-          this.retryBroadcastQR(userId, sessionId, qrPayload, attempts, retryCount + 1);
+          this.retryBroadcastQR(sessionId, qrPayload, attempts, retryCount + 1);
         }, retryDelay);
       } else {
-        logger.error('Failed to broadcast QR update after all retries:', broadcastError);
+        logger.error('Failed to broadcast QR after all retries:', broadcastError);
       }
     }
   }
@@ -770,7 +677,7 @@ export class WPPConnectManager {
     clientInfo.lastActivity = new Date();
 
     // IMMEDIATE broadcast like working demo
-    this.broadcastStatusChange(userId, sessionId, newStatus, clientInfo, status);
+    this.broadcastStatusChange(sessionId, newStatus, clientInfo, status);
 
     // Background database operations (non-blocking like working demo)
     setImmediate(async () => {
@@ -794,7 +701,7 @@ export class WPPConnectManager {
 
               // Try multiple methods to get phone number
               let phoneNumber = null;
-              let deviceName = clientInfo.deviceInfo?.name || 'Unknown';
+              let deviceName = clientInfo.deviceInfo?.name || 'WhatsApp Web';
 
               // Method 1: getHostDevice
               try {
@@ -863,7 +770,7 @@ export class WPPConnectManager {
                 );
 
                 // Broadcast updated device info
-                this.broadcastStatusChange(userId, sessionId, newStatus, clientInfo, status);
+                this.broadcastStatusChange(sessionId, newStatus, clientInfo, status);
                 break;
               }
             } catch (deviceError) {
@@ -942,6 +849,21 @@ export class WPPConnectManager {
         } catch (eventError) {
           logger.error(`Failed to record event for ${sessionId}:`, eventError);
         }
+
+        // Trigger email notifications for status changes (non-blocking)
+        try {
+          const oldStatusEnum = this.mapStatusToEnum(eventPayload.oldStatus);
+          const newStatusEnum = newStatus;
+          
+          await WPPNotificationHandler.handleSessionStateChange(
+            sessionId,
+            oldStatusEnum,
+            newStatusEnum,
+            eventPayload.error || status
+          );
+        } catch (notificationError) {
+          logger.error(`Failed to trigger notification for ${sessionId}:`, notificationError);
+        }
       } catch (error) {
         logger.error('Failed to process status change in background:', error);
       }
@@ -952,7 +874,6 @@ export class WPPConnectManager {
    * Immediate status broadcast (like working demo)
    */
   private broadcastStatusChange(
-    userId: string,
     sessionId: string,
     newStatus: SessionStatus,
     clientInfo: ClientInfo,
@@ -969,14 +890,7 @@ export class WPPConnectManager {
 
     // Primary broadcast via SocketIOService with retry mechanism
     setImmediate(async () => {
-      await this.retryBroadcastStatus(
-        userId,
-        sessionId,
-        broadcastPayload,
-        newStatus,
-        originalStatus,
-        0
-      );
+      await this.retryBroadcastStatus(sessionId, broadcastPayload, newStatus, originalStatus, 0);
     });
   }
 
@@ -984,7 +898,6 @@ export class WPPConnectManager {
    * Retry status broadcast with exponential backoff when Socket.IO is not ready
    */
   private async retryBroadcastStatus(
-    userId: string,
     sessionId: string,
     broadcastPayload: any,
     newStatus: SessionStatus,
@@ -1005,7 +918,6 @@ export class WPPConnectManager {
           );
           setTimeout(() => {
             this.retryBroadcastStatus(
-              userId,
               sessionId,
               broadcastPayload,
               newStatus,
@@ -1021,6 +933,14 @@ export class WPPConnectManager {
           return;
         }
       }
+
+      // Resolve userId for broadcasting
+      const session = await Session.findOne({ sessionId }).select('userId').lean();
+      if (!session) {
+        logger.warn(`Cannot broadcast status: session not found ${sessionId}`);
+        return;
+      }
+      const userId = session.userId.toString();
 
       // Socket.IO is available - proceed with broadcast
       const broadcastSuccess = socketService.broadcastToUser(
@@ -1040,7 +960,6 @@ export class WPPConnectManager {
         logger.warn(`Status broadcast failed, retrying in ${retryDelay}ms:`, broadcastError);
         setTimeout(() => {
           this.retryBroadcastStatus(
-            userId,
             sessionId,
             broadcastPayload,
             newStatus,
@@ -1285,6 +1204,12 @@ export class WPPConnectManager {
 
     const clientInfo = this.clients.get(sessionId);
 
+    // If already connected, do not restart or generate QR again
+    if (clientInfo && clientInfo.status === 'CONNECTED') {
+      logger.info(`Session ${sessionId} already CONNECTED, skipping QR refresh.`);
+      return;
+    }
+
     if (clientInfo && clientInfo.client) {
       // Existing client - restart it for new QR
       try {
@@ -1298,7 +1223,7 @@ export class WPPConnectManager {
           useChrome: true,
           debug: false,
           logQR: false,
-          browserArgs: [],
+          browserArgs: ['--no-sandbox', '--disable-setuid-sandbox'],
         };
         await this.initializeClient(sessionId, config);
       } catch (error) {
@@ -1367,10 +1292,6 @@ export class WPPConnectManager {
       const result = await clientInfo.client.sendText(formattedTo, content);
       clientInfo.messageCount++;
       clientInfo.lastActivity = new Date();
-
-      // Update lastSeenAt in database when sending messages
-      this.updateLastSeenAt(sessionId);
-
       return result;
     } catch (error) {
       logger.error(`Failed to send text message:`, error);
@@ -1977,5 +1898,25 @@ export class WPPConnectManager {
       logQR: false,
       browserArgs: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
+  }
+
+  /**
+   * Helper method to map internal status strings to SessionStatus enum
+   */
+  private mapStatusToEnum(status: string): SessionStatus {
+    switch (status) {
+      case 'CONNECTED':
+        return SessionStatus.CONNECTED;
+      case 'DISCONNECTED':
+        return SessionStatus.DISCONNECTED;
+      case 'QR':
+        return SessionStatus.QR;
+      case 'INITIALIZING':
+        return SessionStatus.PENDING;
+      case 'ERROR':
+        return SessionStatus.ERROR;
+      default:
+        return SessionStatus.PENDING;
+    }
   }
 }

@@ -32,6 +32,7 @@ import messageRoutes from './routes/messages.routes';
 import webhookRoutes from './routes/webhooks.routes';
 import eventRoutes from './routes/events.routes';
 import healthRoutes from './routes/health.routes';
+import notificationRoutes from './routes/notifications.routes';
 import simpleTestRoutes, { initializeSimpleTest } from './routes/simple-test.routes';
 
 class Application {
@@ -109,6 +110,7 @@ class Application {
     this.app.use('/api/v1/messages', messageRoutes);
     this.app.use('/api/v1/webhooks', webhookRoutes);
     this.app.use('/api/v1/events', eventRoutes);
+    this.app.use('/api/v1/notifications', notificationRoutes);
 
     // API documentation
     this.app.get('/api/docs', (_req, res) => {
@@ -171,6 +173,11 @@ class Application {
 
       // Initialize WPPConnect manager LAST (so it can broadcast properly)
       await this.wppManager.initialize();
+
+      // Initialize notification system
+      const { NotificationJob } = await import('./jobs/notification.job');
+      NotificationJob.start();
+      logger.info('✅ Notification system initialized');
 
       // Initialize simple test (working WhatsApp setup)
       initializeSimpleTest(this.io);

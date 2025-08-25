@@ -12,6 +12,11 @@ export interface IUser extends Document {
   twoFAEnabled: boolean;
   twoFASecret?: string;
   status: UserStatus;
+  notificationSettings?: {
+    emailNotifications: boolean;
+    notificationTypes: string[];
+    suppressionHours: number;
+  };
   createdAt: Date;
   updatedAt: Date;
 
@@ -110,6 +115,29 @@ const UserSchema = new Schema<IUser>(
       type: String,
       enum: Object.values(UserStatus),
       default: UserStatus.ACTIVE,
+    },
+    notificationSettings: {
+      emailNotifications: {
+        type: Boolean,
+        default: true,
+      },
+      notificationTypes: {
+        type: [String],
+        default: ['SESSION_DISCONNECTED', 'SESSION_ERROR'],
+        validate: {
+          validator: function (types: string[]) {
+            const validTypes = ['SESSION_DISCONNECTED', 'SESSION_RECONNECTED', 'SESSION_ERROR', 'SESSION_EXPIRED'];
+            return types.every(type => validTypes.includes(type));
+          },
+          message: 'Invalid notification type',
+        },
+      },
+      suppressionHours: {
+        type: Number,
+        default: 1,
+        min: [1, 'Suppression hours must be at least 1'],
+        max: [24, 'Suppression hours cannot exceed 24'],
+      },
     },
   },
   {

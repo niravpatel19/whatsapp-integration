@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+*{
+  padding: 0;
+  margin: 0;
+}
+
 /* Base styles */
 @layer base {
   html {
@@ -91,15 +96,17 @@
   background: #f9fafb !important;
 }
 
-/* Ensure header grows to fit content (prevents clipping/overlap) */
- .ant-layout-header {
+/* Ensure header grows to fit content and stays sticky */
+.ant-layout-header {
   height: auto !important;
   line-height: normal !important;
   padding: 0 !important;
   background: #ffffff !important;
   border-bottom: 1px solid #e5e7eb !important;
-  position: static !important;
- }
+  position: sticky !important;
+  top: 0;
+  z-index: 1000;
+}
 
 .ant-layout-sider {
   background: #ffffff !important;

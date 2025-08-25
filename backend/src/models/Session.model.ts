@@ -28,6 +28,10 @@ export interface ISession extends Document {
   lastErrorAt?: Date;
   lastErrorMessage?: string;
 
+  // Notification tracking
+  lastNotificationSent?: Date;
+  notificationsSuppressed?: boolean;
+
   // Instance methods
   updateStatus(newStatus: SessionStatus, error?: string): Promise<void>;
   updateDeviceInfo(deviceInfo: DeviceInfo): Promise<void>;
@@ -178,6 +182,15 @@ const SessionSchema = new Schema<ISession>(
     lastErrorMessage: {
       type: String,
       maxlength: [500, 'Error message cannot exceed 500 characters'],
+    },
+
+    // Notification tracking
+    lastNotificationSent: {
+      type: Date,
+    },
+    notificationsSuppressed: {
+      type: Boolean,
+      default: false,
     },
   },
   {

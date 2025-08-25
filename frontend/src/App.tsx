@@ -1,6 +1,6 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { Layout, Spin, Alert } from 'antd';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { Layout, Spin, Alert, Menu, Dropdown, Avatar } from 'antd';
 import { useAuthStore } from '@/stores/authStore';
 import { useSocket } from '@/hooks/useSocket';
 
@@ -14,7 +14,7 @@ const WebhooksPage = React.lazy(() => import('@/pages/WebhooksPage'));
 const SimpleWhatsAppTest = React.lazy(() => import('@/pages/SimpleWhatsAppTest'));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
 
-const { Content } = Layout;
+const { Header, Content } = Layout;
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -55,8 +55,9 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 const App: React.FC = () => {
-  const { initializeAuth } = useAuthStore();
+  const { initializeAuth, user, logout } = useAuthStore();
   const { connectionStatus } = useSocket();
+  const location = useLocation();
 
   // Initialize authentication on app start
   React.useEffect(() => {
@@ -71,11 +72,62 @@ const App: React.FC = () => {
     initAuth();
   }, [initializeAuth]);
 
+  const selectedKey = React.useMemo(() => {
+    if (location.pathname.startsWith('/sessions')) return 'sessions';
+    if (location.pathname.startsWith('/messages')) return 'messages';
+    if (location.pathname.startsWith('/webhooks')) return 'webhooks';
+    if (location.pathname.startsWith('/profile')) return 'profile';
+    if (location.pathname.startsWith('/simple-test')) return 'simple-test';
+    return 'dashboard';
+  }, [location.pathname]);
+
+  const userMenu = (
+    <Menu
+      items={[
+        { key: 'profile', label: <Link to="/profile">Profile</Link> },
+        { type: 'divider' as any },
+        { key: 'logout', label: <span onClick={() => logout()}>Logout</span> },
+      ]}
+    />
+  );
+
   return (
     <Layout className="min-h-screen">
+      {!location.pathname.startsWith('/login') && (
+        <Header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+          <div className="container py-3 flex items-center justify-between">
+            <Link to="/dashboard" className="text-lg font-semibold text-gray-900">
+              WhatsApp Integration
+            </Link>
+            <div className="flex-1 mx-6">
+              <Menu
+                mode="horizontal"
+                selectedKeys={[selectedKey]}
+                style={{ borderBottom: 'none' }}
+                items={[
+                  { key: 'dashboard', label: <Link to="/dashboard">Dashboard</Link> },
+                  { key: 'sessions', label: <Link to="/sessions">Sessions</Link> },
+                  { key: 'messages', label: <Link to="/messages">Messages</Link> },
+                  { key: 'webhooks', label: <Link to="/webhooks">Webhooks</Link> },
+                  { key: 'profile', label: <Link to="/profile">Settings</Link> },
+                  { key: 'simple-test', label: <Link to="/simple-test">Simple Test</Link> },
+                ]}
+              />
+            </div>
+            <Dropdown overlay={userMenu} trigger={['click']} placement="bottomRight">
+              <div className="flex items-center gap-2 cursor-pointer">
+                <Avatar size={28} style={{ backgroundColor: '#25D366' }}>
+                  {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                </Avatar>
+                <span className="text-sm text-gray-700">{user?.name || user?.email || 'User'}</span>
+              </div>
+            </Dropdown>
+          </div>
+        </Header>
+      )}
       <Content>
         {/* Connection Status Alert */}
-        {connectionStatus === 'disconnected' && (
+        {connectionStatus === 'disconnected' && !location.pathname.startsWith('/login') && (
           <Alert
             message="Connection Lost"
             description="Attempting to reconnect to the server..."

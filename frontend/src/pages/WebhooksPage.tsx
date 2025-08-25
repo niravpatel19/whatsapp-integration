@@ -31,9 +31,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   InfoCircleOutlined,
-  ArrowLeftOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 
 const { Content } = Layout;
@@ -79,7 +77,6 @@ interface DeliveryLog {
 }
 
 const WebhooksPage: React.FC = () => {
-  const navigate = useNavigate();
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [eventTypes, setEventTypes] = useState<EventType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,11 +140,9 @@ const WebhooksPage: React.FC = () => {
   const handleSubmit = async (values: any) => {
     try {
       if (editingWebhook) {
-        // Update existing webhook
         await api.put(`/webhooks/${editingWebhook.id}`, values);
         message.success('Webhook updated successfully');
       } else {
-        // Create new webhook
         await api.post('/webhooks', values);
         message.success('Webhook created successfully');
       }
@@ -193,7 +188,6 @@ const WebhooksPage: React.FC = () => {
         message.error(`Webhook test failed: ${testResult.error || 'Unknown error'}`);
       }
 
-      // Refresh webhooks to show updated stats
       loadWebhooks();
     } catch (error: any) {
       message.error(
@@ -267,49 +261,42 @@ const WebhooksPage: React.FC = () => {
       title: 'Description',
       dataIndex: 'description',
       key: 'description',
-      render: (description: string) => description || <Text type="secondary">No description</Text>,
+      render: (d: string) => d || <Text type="secondary">No description</Text>,
     },
     {
       title: 'Event Types',
       dataIndex: 'eventTypes',
       key: 'eventTypes',
-      render: (eventTypes: string[]) => (
+      render: (types: string[]) => (
         <Space wrap>
-          {eventTypes.slice(0, 3).map((type) => (
-            <Tag key={type}>{type.replace(/_/g, ' ')}</Tag>
+          {types.slice(0, 3).map((t) => (
+            <Tag key={t}>{t.replace(/_/g, ' ')}</Tag>
           ))}
-          {eventTypes.length > 3 && <Tag>+{eventTypes.length - 3} more</Tag>}
+          {types.length > 3 && <Tag>+{types.length - 3} more</Tag>}
         </Space>
       ),
     },
-    {
-      title: 'Status',
-      key: 'status',
-      render: (webhook: Webhook) => getHealthStatus(webhook),
-    },
+    { title: 'Status', key: 'status', render: (w: Webhook) => getHealthStatus(w) },
     {
       title: 'Success Rate',
       key: 'successRate',
-      render: (webhook: Webhook) => {
-        const rate = webhook.stats.successRate;
-        return (
-          <Progress
-            percent={rate}
-            size="small"
-            strokeColor={getSuccessRateColor(rate)}
-            format={(percent) => `${percent?.toFixed(1)}%`}
-          />
-        );
-      },
+      render: (w: Webhook) => (
+        <Progress
+          percent={w.stats.successRate}
+          size="small"
+          strokeColor={getSuccessRateColor(w.stats.successRate)}
+          format={(p) => `${p?.toFixed(1)}%`}
+        />
+      ),
     },
     {
       title: 'Deliveries',
       key: 'deliveries',
-      render: (webhook: Webhook) => (
+      render: (w: Webhook) => (
         <Space direction="vertical" size="small">
-          <Text strong>{webhook.stats.totalDeliveries}</Text>
+          <Text strong>{w.stats.totalDeliveries}</Text>
           <Text type="secondary" style={{ fontSize: '12px' }}>
-            {webhook.stats.successfulDeliveries} success, {webhook.stats.failedDeliveries} failed
+            {w.stats.successfulDeliveries} success, {w.stats.failedDeliveries} failed
           </Text>
         </Space>
       ),
@@ -317,41 +304,33 @@ const WebhooksPage: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (webhook: Webhook) => (
+      render: (w: Webhook) => (
         <Space>
           <Tooltip title="Test webhook">
             <Button
               size="small"
-              loading={testingWebhook === webhook.id}
-              onClick={() => handleTestWebhook(webhook.id)}
+              loading={testingWebhook === w.id}
+              onClick={() => handleTestWebhook(w.id)}
             />
           </Tooltip>
           <Tooltip title="View logs">
-            <Button
-              icon={<HistoryOutlined />}
-              size="small"
-              onClick={() => handleViewLogs(webhook.id)}
-            />
+            <Button icon={<HistoryOutlined />} size="small" onClick={() => handleViewLogs(w.id)} />
           </Tooltip>
           <Tooltip title="Edit webhook">
-            <Button
-              icon={<EditOutlined />}
-              size="small"
-              onClick={() => handleEditWebhook(webhook)}
-            />
+            <Button icon={<EditOutlined />} size="small" onClick={() => handleEditWebhook(w)} />
           </Tooltip>
-          {webhook.retryCount > 0 && (
+          {w.retryCount > 0 && (
             <Tooltip title="Retry failed deliveries">
               <Button
                 icon={<ReloadOutlined />}
                 size="small"
-                onClick={() => handleRetryWebhook(webhook.id)}
+                onClick={() => handleRetryWebhook(w.id)}
               />
             </Tooltip>
           )}
           <Popconfirm
             title="Are you sure you want to delete this webhook?"
-            onConfirm={() => handleDeleteWebhook(webhook.id)}
+            onConfirm={() => handleDeleteWebhook(w.id)}
             okText="Yes"
             cancelText="No"
           >
@@ -362,15 +341,14 @@ const WebhooksPage: React.FC = () => {
     },
   ];
 
-  // Calculate overall stats
   const overallStats = webhooks.reduce(
-    (acc, webhook) => {
+    (acc, w) => {
       acc.totalWebhooks++;
-      if (webhook.isActive) acc.activeWebhooks++;
-      if (webhook.health) acc.healthyWebhooks++;
-      acc.totalDeliveries += webhook.stats.totalDeliveries;
-      acc.successfulDeliveries += webhook.stats.successfulDeliveries;
-      acc.failedDeliveries += webhook.stats.failedDeliveries;
+      if (w.isActive) acc.activeWebhooks++;
+      if (w.health) acc.healthyWebhooks++;
+      acc.totalDeliveries += w.stats.totalDeliveries;
+      acc.successfulDeliveries += w.stats.successfulDeliveries;
+      acc.failedDeliveries += w.stats.failedDeliveries;
       return acc;
     },
     {
@@ -390,212 +368,192 @@ const WebhooksPage: React.FC = () => {
 
   return (
     <Layout>
-      <Layout.Header className="bg-white shadow-sm border-b border-gray-200 px-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Title level={3} className="mb-0">
-              Webhook Management
-            </Title>
-            <Text type="secondary">
-              Configure webhooks to receive real-time notifications about WhatsApp events
-            </Text>
-          </div>
-          <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
-              Back to Dashboard
-            </Button>
-            <Button onClick={() => navigate('/sessions')}>Sessions</Button>
-            <Button onClick={() => navigate('/messages')}>Messages</Button>
-          </Space>
-        </div>
-      </Layout.Header>
-      <Content style={{ padding: '24px' }}>
-        {/* Overview Stats */}
-        <Row gutter={16} style={{ marginBottom: '24px' }}>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="Total Webhooks"
-                value={overallStats.totalWebhooks}
-                prefix={<InfoCircleOutlined />}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="Active Webhooks"
-                value={overallStats.activeWebhooks}
-                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="Healthy Webhooks"
-                value={overallStats.healthyWebhooks}
-                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-              />
-            </Card>
-          </Col>
-          <Col span={6}>
-            <Card>
-              <Statistic
-                title="Success Rate"
-                value={overallSuccessRate}
-                precision={1}
-                suffix="%"
-                valueStyle={{ color: getSuccessRateColor(overallSuccessRate) }}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Webhooks Table */}
-        <Card
-          title="Webhooks"
-          extra={
+      <Content className="py-6">
+        <div className="container">
+          <div className="page-header">
+            <div>
+              <Title level={3} className="mb-0">
+                Webhook Management
+              </Title>
+              <Text type="secondary">
+                Configure webhooks to receive real-time notifications about WhatsApp events
+              </Text>
+            </div>
             <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateWebhook}>
               Create Webhook
             </Button>
-          }
-        >
-          <Table
-            columns={columns}
-            dataSource={webhooks}
-            rowKey="id"
-            loading={loading}
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} webhooks`,
-            }}
-          />
-        </Card>
+          </div>
 
-        {/* Create/Edit Webhook Modal */}
-        <Modal
-          title={editingWebhook ? 'Edit Webhook' : 'Create Webhook'}
-          open={modalVisible}
-          onCancel={() => setModalVisible(false)}
-          footer={null}
-          width={600}
-        >
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
-            <Form.Item
-              name="url"
-              label="Webhook URL"
-              rules={[
-                { required: true, message: 'Please enter webhook URL' },
-                { type: 'url', message: 'Please enter a valid URL' },
-                {
-                  validator: (_, value) => {
-                    if (value && !value.startsWith('https://')) {
-                      return Promise.reject('Webhook URL must use HTTPS');
-                    }
-                    return Promise.resolve();
+          {/* Overview Stats */}
+          <Row gutter={16} className="mb-6">
+            <Col xs={24} md={6}>
+              <Card>
+                <Statistic
+                  title="Total Webhooks"
+                  value={overallStats.totalWebhooks}
+                  prefix={<InfoCircleOutlined />}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} md={6}>
+              <Card>
+                <Statistic
+                  title="Active Webhooks"
+                  value={overallStats.activeWebhooks}
+                  prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} md={6}>
+              <Card>
+                <Statistic
+                  title="Healthy Webhooks"
+                  value={overallStats.healthyWebhooks}
+                  prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} md={6}>
+              <Card>
+                <Statistic
+                  title="Success Rate"
+                  value={overallSuccessRate}
+                  precision={1}
+                  suffix="%"
+                  valueStyle={{ color: getSuccessRateColor(overallSuccessRate) }}
+                />
+              </Card>
+            </Col>
+          </Row>
+
+          {/* Webhooks Table */}
+          <Card title="Webhooks">
+            <Table
+              columns={columns}
+              dataSource={webhooks}
+              rowKey="id"
+              loading={loading}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (t, r) => `${r[0]}-${r[1]} of ${t} webhooks`,
+              }}
+            />
+          </Card>
+
+          {/* Create/Edit Webhook Modal */}
+          <Modal
+            title={editingWebhook ? 'Edit Webhook' : 'Create Webhook'}
+            open={modalVisible}
+            onCancel={() => setModalVisible(false)}
+            footer={null}
+            width={600}
+          >
+            <Form form={form} layout="vertical" onFinish={handleSubmit}>
+              <Form.Item
+                name="url"
+                label="Webhook URL"
+                rules={[
+                  { required: true, message: 'Please enter webhook URL' },
+                  { type: 'url', message: 'Please enter a valid URL' },
+                  {
+                    validator: (_, v) =>
+                      v && !v.startsWith('https://')
+                        ? Promise.reject('Webhook URL must use HTTPS')
+                        : Promise.resolve(),
                   },
-                },
-              ]}
-            >
-              <Input placeholder="https://your-domain.com/webhook" />
-            </Form.Item>
-
-            <Form.Item name="description" label="Description">
-              <Input.TextArea placeholder="Optional description for this webhook" rows={3} />
-            </Form.Item>
-
-            <Form.Item
-              name="eventTypes"
-              label="Event Types"
-              rules={[{ required: true, message: 'Please select at least one event type' }]}
-            >
-              <Select
-                mode="multiple"
-                placeholder="Select event types to subscribe to"
-                optionLabelProp="label"
+                ]}
               >
-                {eventTypes.map((eventType) => (
-                  <Option
-                    key={eventType.type}
-                    value={eventType.type}
-                    label={eventType.type.replace(/_/g, ' ')}
-                  >
-                    <div>
-                      <div>{eventType.type.replace(/_/g, ' ')}</div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>{eventType.description}</div>
-                    </div>
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-
-            <Form.Item name="isActive" label="Status" valuePropName="checked">
-              <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
-            </Form.Item>
-
-            <Form.Item>
-              <Space>
-                <Button type="primary" htmlType="submit">
-                  {editingWebhook ? 'Update' : 'Create'} Webhook
-                </Button>
-                <Button onClick={() => setModalVisible(false)}>Cancel</Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </Modal>
-
-        {/* Webhook Logs Modal */}
-        <Modal
-          title="Webhook Delivery Logs"
-          open={logsModalVisible}
-          onCancel={() => setLogsModalVisible(false)}
-          footer={null}
-          width={800}
-        >
-          <Timeline>
-            {selectedWebhookLogs.map((log, index) => (
-              <Timeline.Item
-                key={index}
-                color={log.success ? 'green' : 'red'}
-                dot={
-                  log.success ? (
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                  ) : (
-                    <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                  )
-                }
+                <Input placeholder="https://your-domain.com/webhook" />
+              </Form.Item>
+              <Form.Item name="description" label="Description">
+                <Input.TextArea placeholder="Optional description for this webhook" rows={3} />
+              </Form.Item>
+              <Form.Item
+                name="eventTypes"
+                label="Event Types"
+                rules={[{ required: true, message: 'Please select at least one event type' }]}
               >
-                <div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <Text strong>{new Date(log.timestamp).toLocaleString()}</Text>
-                    <Tag color={log.success ? 'success' : 'error'} style={{ marginLeft: '8px' }}>
-                      {log.success ? 'Success' : 'Failed'}
-                    </Tag>
-                    {log.responseCode && (
-                      <Tag style={{ marginLeft: '4px' }}>{log.responseCode}</Tag>
-                    )}
-                  </div>
+                <Select
+                  mode="multiple"
+                  placeholder="Select event types to subscribe to"
+                  optionLabelProp="label"
+                >
+                  {eventTypes.map((et) => (
+                    <Option key={et.type} value={et.type} label={et.type.replace(/_/g, ' ')}>
+                      <div>
+                        <div>{et.type.replace(/_/g, ' ')}</div>
+                        <div style={{ fontSize: '12px', color: '#666' }}>{et.description}</div>
+                      </div>
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              <Form.Item name="isActive" label="Status" valuePropName="checked">
+                <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
+              </Form.Item>
+              <Form.Item>
+                <Space>
+                  <Button type="primary" htmlType="submit">
+                    {editingWebhook ? 'Update' : 'Create'} Webhook
+                  </Button>
+                  <Button onClick={() => setModalVisible(false)}>Cancel</Button>
+                </Space>
+              </Form.Item>
+            </Form>
+          </Modal>
+
+          {/* Webhook Logs Modal */}
+          <Modal
+            title="Webhook Delivery Logs"
+            open={logsModalVisible}
+            onCancel={() => setLogsModalVisible(false)}
+            footer={null}
+            width={800}
+          >
+            <Timeline>
+              {selectedWebhookLogs.map((log, i) => (
+                <Timeline.Item
+                  key={i}
+                  color={log.success ? 'green' : 'red'}
+                  dot={
+                    log.success ? (
+                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                    ) : (
+                      <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                    )
+                  }
+                >
                   <div>
-                    <Text type="secondary">Response time: {log.responseTime}ms</Text>
-                    {log.retryCount > 0 && (
-                      <Text type="secondary" style={{ marginLeft: '16px' }}>
-                        Retry #{log.retryCount}
-                      </Text>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Text strong>{new Date(log.timestamp).toLocaleString()}</Text>
+                      <Tag color={log.success ? 'success' : 'error'} style={{ marginLeft: '8px' }}>
+                        {log.success ? 'Success' : 'Failed'}
+                      </Tag>
+                      {log.responseCode && (
+                        <Tag style={{ marginLeft: '4px' }}>{log.responseCode}</Tag>
+                      )}
+                    </div>
+                    <div>
+                      <Text type="secondary">Response time: {log.responseTime}ms</Text>
+                      {log.retryCount > 0 && (
+                        <Text type="secondary" style={{ marginLeft: '16px' }}>
+                          Retry #{log.retryCount}
+                        </Text>
+                      )}
+                    </div>
+                    {log.error && (
+                      <div style={{ marginTop: '4px' }}>
+                        <Text type="danger">{log.error}</Text>
+                      </div>
                     )}
                   </div>
-                  {log.error && (
-                    <div style={{ marginTop: '4px' }}>
-                      <Text type="danger">{log.error}</Text>
-                    </div>
-                  )}
-                </div>
-              </Timeline.Item>
-            ))}
-          </Timeline>
-        </Modal>
+                </Timeline.Item>
+              ))}
+            </Timeline>
+          </Modal>
+        </div>
       </Content>
     </Layout>
   );
