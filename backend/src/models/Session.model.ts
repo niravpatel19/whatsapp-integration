@@ -426,7 +426,7 @@ SessionSchema.statics.getSessionStatistics = async function (userId: string): Pr
         total: { $sum: 1 },
         active: {
           $sum: {
-            $cond: [{ $nin: ['$status', [SessionStatus.EXPIRED, SessionStatus.ERROR]] }, 1, 0],
+            $cond: [{ $not: { $in: ['$status', [SessionStatus.EXPIRED, SessionStatus.ERROR]] } }, 1, 0],
           },
         },
         connected: {

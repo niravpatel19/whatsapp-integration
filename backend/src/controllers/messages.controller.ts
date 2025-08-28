@@ -16,7 +16,15 @@ const sendMessageSchema = z
     to: CommonSchemas.phone,
     type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location']),
     content: z.string().optional(),
-    mediaUrl: z.string().url().optional(),
+    mediaUrl: z.string().refine((url) => {
+      if (!url) return true; // Optional field
+      try {
+        new URL(url);
+        return url.startsWith('http://') || url.startsWith('https://');
+      } catch {
+        return false;
+      }
+    }, 'Invalid media URL').optional(),
     caption: z.string().max(1000, 'Caption too long').optional(),
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),
@@ -48,7 +56,15 @@ const bulkSendSchema = z.object({
         to: CommonSchemas.phone,
         type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location']),
         content: z.string().optional(),
-        mediaUrl: z.string().url().optional(),
+        mediaUrl: z.string().refine((url) => {
+          if (!url) return true; // Optional field
+          try {
+            new URL(url);
+            return url.startsWith('http://') || url.startsWith('https://');
+          } catch {
+            return false;
+          }
+        }, 'Invalid media URL').optional(),
         caption: z.string().max(1000, 'Caption too long').optional(),
         latitude: z.number().min(-90).max(90).optional(),
         longitude: z.number().min(-180).max(180).optional(),

@@ -109,151 +109,41 @@ export class WPPConnectManager {
       // Find all sessions that should be active (exclude very old CONNECTED sessions)
       const cutoffTime = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours ago
 
+      // Restore sessions that can be automatically restored
+      // Only restore CONNECTED and recent DISCONNECTED sessions automatically
+      // QR, PENDING, EXPIRED, ERROR sessions should be restored manually by user
       const activeSessions = await Session.find({
         $or: [
-          // Recent CONNECTED sessions that might still be valid
+          // Recently connected sessions that should be auto-restored
           {
             status: SessionStatus.CONNECTED,
-            lastSeenAt: { $gte: cutoffTime },
+            lastSeenAt: { $gte: cutoffTime }
           },
-          // QR and PENDING sessions (these should be restored)
-          {
-            status: { $in: [SessionStatus.QR, SessionStatus.PENDING] },
-          },
-          // DISCONNECTED sessions that were previously connected (within 24 hours)
+          // Recently disconnected sessions that might still be valid
           {
             status: SessionStatus.DISCONNECTED,
-            lastSeenAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-          },
-        ],
+            lastSeenAt: { $gte: cutoffTime }
+          }
+        ]
       })
-        .select('sessionId userId deviceInfo status phone lastSeenAt')
+        .select('sessionId userId deviceInfo status phone lastSeenAt createdAt updatedAt')
         .lean();
 
-      logger.info(`Found ${activeSessions.length} sessions to restore`);
+      // DO NOT clean up any sessions - users should always see their sessions in the list
+      // QR, PENDING, EXPIRED, ERROR sessions remain visible for manual reconnection
 
-      // Restore each session with proper in-memory state management
-      for (const session of activeSessions) {
+      logger.info(`Found ${activeSessions.length} sessions for automatic restoration`);
+
+      // Only auto-restore sessions that are likely to work (CONNECTED and recent DISCONNECTED)
+      // Other sessions (QR, PENDING, EXPIRED, ERROR) should be restored manually by user
+      const restorationPromises = activeSessions.map(async (session) => {
+        const sessionId = session.sessionId;
+        const sessionStatus = session.status;
+        
         try {
-          logger.info(`Restoring session: ${session.sessionId} (status: ${session.status})`);
+          logger.info(`Auto-restoring session: ${sessionId} (status: ${sessionStatus})`);
 
-          // Handle CONNECTED sessions - attempt automatic reconnection
-          if (session.status === SessionStatus.CONNECTED) {
-            logger.info(
-              `Found CONNECTED session ${session.sessionId} - attempting automatic reconnection`
-            );
-
-            try {
-              // Initialize in-memory client info first
-              const clientInfo: ClientInfo = {
-                sessionId: session.sessionId,
-                client: null,
-                status: 'INITIALIZING',
-                createdAt: new Date(),
-                lastActivity: new Date(),
-                errorCount: 0,
-                messageCount: 0,
-                deviceInfo: session.deviceInfo,
-                phone: session.phone,
-                isConnecting: true,
-              };
-
-              // Add to in-memory map immediately
-              this.clients.set(session.sessionId, clientInfo);
-
-              // Try to restore the session automatically
-              await this.initializeClientInternal(session.sessionId, {
-                session: session.sessionId,
-                deviceName: session.deviceInfo?.name || 'WhatsApp Web',
-                headless: true,
-                devtools: false,
-                useChrome: true,
-                debug: false,
-                logQR: false,
-                browserArgs: [
-                  '--no-sandbox',
-                  '--disable-setuid-sandbox',
-                  '--disable-dev-shm-usage',
-                  '--disable-accelerated-2d-canvas',
-                  '--no-first-run',
-                  '--no-zygote',
-                  '--disable-gpu',
-                ],
-              });
-
-              logger.info(
-                `CONNECTED session automatic restoration initiated: ${session.sessionId}`
-              );
-            } catch (error) {
-              logger.warn(
-                `CONNECTED session auto-restoration failed for ${session.sessionId}, marking as DISCONNECTED:`,
-                error
-              );
-              // Clean up failed session
-              this.clients.delete(session.sessionId);
-              // Mark as DISCONNECTED for manual reconnection
-              await Session.updateStatus(session.sessionId, SessionStatus.DISCONNECTED);
-            }
-            continue;
-          }
-
-          // Handle DISCONNECTED sessions - check if they might still be connected
-          if (session.status === SessionStatus.DISCONNECTED) {
-            logger.info(
-              `Found DISCONNECTED session ${session.sessionId} - checking if still connected`
-            );
-
-            // Try to restore and check connection status
-            try {
-              // Initialize in-memory client info first
-              const clientInfo: ClientInfo = {
-                sessionId: session.sessionId,
-                client: null,
-                status: 'INITIALIZING',
-                createdAt: new Date(),
-                lastActivity: new Date(),
-                errorCount: 0,
-                messageCount: 0,
-                deviceInfo: session.deviceInfo,
-                phone: session.phone,
-                isConnecting: true,
-              };
-
-              // Add to in-memory map immediately
-              this.clients.set(session.sessionId, clientInfo);
-
-              // Try to restore the session with connection check
-              await this.initializeClientInternal(session.sessionId, {
-                session: session.sessionId,
-                deviceName: session.deviceInfo?.name || 'WhatsApp Web',
-                headless: true,
-                devtools: false,
-                useChrome: true,
-                debug: false,
-                logQR: false,
-                browserArgs: [
-                  '--no-sandbox',
-                  '--disable-setuid-sandbox',
-                  '--disable-dev-shm-usage',
-                  '--disable-accelerated-2d-canvas',
-                  '--no-first-run',
-                  '--no-zygote',
-                  '--disable-gpu',
-                ],
-              });
-
-              logger.info(`DISCONNECTED session restoration attempted: ${session.sessionId}`);
-            } catch (error) {
-              logger.info(
-                `DISCONNECTED session ${session.sessionId} - keeping as DISCONNECTED for manual reconnection`
-              );
-              // Clean up failed session
-              this.clients.delete(session.sessionId);
-            }
-            continue;
-          }
-
-          // Initialize in-memory client info first (like working demo)
+          // Initialize in-memory client info first
           const clientInfo: ClientInfo = {
             sessionId: session.sessionId,
             client: null,
@@ -270,8 +160,12 @@ export class WPPConnectManager {
           // Add to in-memory map immediately
           this.clients.set(session.sessionId, clientInfo);
 
-          // Initialize the WPP client
-          await this.initializeClientInternal(session.sessionId, {
+          // Restore with timeout protection (30 seconds for auto-restoration)
+          const restorationTimeout = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Auto-restoration timeout')), 30000);
+          });
+
+          const restorationPromise = this.initializeClientInternal(session.sessionId, {
             session: session.sessionId,
             deviceName: session.deviceInfo?.name || 'WhatsApp Web',
             headless: true,
@@ -290,18 +184,37 @@ export class WPPConnectManager {
             ],
           });
 
-          logger.info(`Session restoration completed: ${session.sessionId}`);
+          await Promise.race([restorationPromise, restorationTimeout]);
+
+          logger.info(`✅ Auto-restoration completed: ${sessionId} (was ${sessionStatus})`);
         } catch (error) {
-          logger.error(`Failed to restore session ${session.sessionId}:`, error);
-          // Clean up failed session
-          this.clients.delete(session.sessionId);
-          await Session.updateStatus(
-            session.sessionId,
-            SessionStatus.ERROR,
-            `Restoration failed: ${(error as Error).message}`
-          );
+          logger.warn(`⚠️ Auto-restoration failed for ${sessionId} (was ${sessionStatus}):`, error);
+          
+          // Clean up failed session from memory
+          this.clients.delete(sessionId);
+          
+          // Mark failed auto-restorations as DISCONNECTED for manual reconnection
+          try {
+            await Session.updateStatus(sessionId, SessionStatus.DISCONNECTED);
+            logger.info(`Marked failed auto-restoration ${sessionId} as DISCONNECTED for manual reconnection`);
+          } catch (dbError) {
+            logger.error(`Failed to update session status for ${sessionId}:`, dbError);
+          }
         }
-      }
+      });
+
+      // Wait for all auto-restorations to complete with overall timeout
+      const overallTimeout = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          logger.warn('Auto-restoration overall timeout reached, continuing with server startup');
+          resolve();
+        }, 90000); // 90 seconds overall timeout for auto-restoration
+      });
+
+      await Promise.race([
+        Promise.allSettled(restorationPromises),
+        overallTimeout
+      ]);
 
       logger.info('Session restoration completed');
     } catch (error) {
@@ -336,6 +249,14 @@ export class WPPConnectManager {
         errorCount: 0,
         messageCount: 0,
         isConnecting: true,
+        // Initialize device info from config if provided
+        deviceInfo: config.deviceName ? {
+          name: config.deviceName,
+          platform: 'WhatsApp Web',
+          version: 'Unknown',
+          browser: 'Chrome',
+          os: 'Linux',
+        } : undefined,
       };
 
       this.clients.set(sessionId, clientInfo);
@@ -785,9 +706,10 @@ export class WPPConnectManager {
             logger.error(
               `Failed to retrieve device info for ${sessionId} after ${maxRetries} attempts`
             );
-            // Still update lastSeenAt even if we couldn't get phone number
-            clientInfo.deviceInfo = clientInfo.deviceInfo || {
-              name: 'Unknown',
+            // Preserve existing device name if available, otherwise use 'Unknown'
+            const existingDeviceName = clientInfo.deviceInfo?.name;
+            clientInfo.deviceInfo = {
+              name: existingDeviceName || 'Unknown',
               platform: 'WhatsApp Web',
               version: 'Unknown',
               browser: 'Chrome',

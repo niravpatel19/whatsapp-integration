@@ -8,8 +8,8 @@ const E164_REGEX = /^\+[1-9]\d{1,14}$/;
 // Email validation using RFC 5322 compliant regex (simplified)
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
-// URL validation regex
-const URL_REGEX = /^https?:\/\/(?:[-\w.])+(?:\:[0-9]+)?(?:\/(?:[\w\/_.])*(?:\?(?:[\w&=%.])*)?(?:\#(?:[\w.])*)?)?$/;
+// URL validation regex - More permissive to allow cloud storage URLs
+const URL_REGEX = /^https?:\/\/(?:[-\w.])+(?:\:[0-9]+)?(?:\/(?:[\w\/_.\-~!$&'()*+,;=:@])*(?:\?(?:[\w&=%.\-~!$'()*+,;:@/])*)?(?:\#(?:[\w.\-~!$&'()*+,;=:@/])*)?)?$/;
 
 // Media file type whitelist
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
@@ -75,6 +75,7 @@ export interface MediaInfo {
   size?: number;
   isValid: boolean;
   errors: string[];
+  warning?: string;
 }
 
 export interface PhoneValidationResult {
@@ -209,17 +210,12 @@ export class ValidationService {
       return { success: false, errors };
     }
     
-    // Basic URL format validation
-    if (!URL_REGEX.test(url)) {
-      errors.push({ field: 'url', message: 'Invalid URL format', code: 'INVALID_FORMAT' });
-      return { success: false, errors };
-    }
-    
+    // Parse and validate URL using built-in URL constructor
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(url);
     } catch (error) {
-      errors.push({ field: 'url', message: 'Invalid URL', code: 'INVALID_URL' });
+      errors.push({ field: 'url', message: 'Invalid URL format', code: 'INVALID_FORMAT' });
       return { success: false, errors };
     }
     
@@ -343,16 +339,31 @@ export class ValidationService {
       };
       
     } catch (error: any) {
-      logger.error('Media URL validation error:', error);
+      logger.warn('Media URL validation error (allowing fallback):', error);
       
-      if (error.code === 'ENOTFOUND') {
-        errors.push('URL is not reachable');
-      } else if (error.code === 'ETIMEDOUT') {
-        errors.push('URL request timed out');
-      } else if (error.response?.status === 404) {
+      // If SKIP_MEDIA_VALIDATION is enabled, or if it's a network/auth error, allow the URL
+      const skipValidation = process.env.SKIP_MEDIA_VALIDATION === 'true';
+      const isNetworkError = error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT';
+      const isAuthError = error.response?.status === 403 || error.response?.status === 401;
+      
+      if (skipValidation || isNetworkError || isAuthError) {
+        logger.info(`Allowing media URL despite validation error: ${url}`);
+        return {
+          success: true,
+          data: {
+            url,
+            type: expectedType,
+            size: 0,
+            isValid: true,
+            errors: [],
+            warning: 'Media validation skipped due to network/auth restrictions'
+          }
+        };
+      }
+      
+      // Only fail for actual file not found or server errors
+      if (error.response?.status === 404) {
         errors.push('File not found at URL');
-      } else if (error.response?.status === 403) {
-        errors.push('Access denied to URL');
       } else {
         errors.push('Failed to validate media URL');
       }
@@ -475,5 +486,13 @@ export const CommonSchemas = {
   
   totpCode: z.string().length(6, 'TOTP code must be 6 digits').regex(/^\d{6}$/, 'TOTP code must be numeric'),
   
-  mediaUrl: z.string().url('Invalid media URL').max(2048, 'Media URL too long')
+  mediaUrl: z.string().max(2048, 'Media URL too long').refine((url) => {
+    if (!url) return true;
+    try {
+      new URL(url);
+      return url.startsWith('http://') || url.startsWith('https://');
+    } catch {
+      return false;
+    }
+  }, 'Invalid media URL')
 };
