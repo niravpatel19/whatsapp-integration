@@ -1533,6 +1533,58 @@ export class WPPConnectManager {
     }
   }
 
+  async sendButtonMessage(
+    sessionId: string,
+    to: string,
+    content: string,
+    buttons: Array<{ id: string; text: string }>,
+    footer?: string
+  ): Promise<any> {
+    logger.info(`Sending button message: ${sessionId} -> ${to}`);
+
+    const clientInfo = this.clients.get(sessionId);
+    if (!clientInfo || !clientInfo.client) {
+      throw new Error('Session not found or not connected');
+    }
+
+    if (clientInfo.status !== 'CONNECTED') {
+      throw new Error('Session is not connected');
+    }
+
+    try {
+      // Format phone number for WPPConnect (remove + sign)
+      const formattedTo = to.startsWith('+') ? to.substring(1) : to;
+
+      // WPPConnect button format - using sendText with button options
+      const wppButtons = buttons.map((btn, index) => ({
+        id: btn.id,
+        text: btn.text,
+      }));
+
+      const options: any = {
+        useTemplateButtons: true,
+        buttons: wppButtons,
+      };
+
+      if (footer) {
+        options.footer = footer;
+      }
+
+      const result = await clientInfo.client.sendText(
+        formattedTo,
+        content,
+        options
+      );
+      
+      clientInfo.messageCount++;
+      clientInfo.lastActivity = new Date();
+      return result;
+    } catch (error) {
+      logger.error(`Failed to send button message:`, error);
+      throw error;
+    }
+  }
+
   getClientInfo(sessionId: string): ClientInfo | undefined {
     return this.clients.get(sessionId);
   }

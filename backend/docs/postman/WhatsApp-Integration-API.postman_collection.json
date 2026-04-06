@@ -18,7 +18,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:3001/api/v1",
+      "value": "http://localhost:7811/api/v1",
       "type": "string"
     },
     {
@@ -819,7 +819,7 @@
           "if (pm.environment.get('environment') === 'production') {",
           "    pm.collectionVariables.set('base_url', 'https://api.whatsapp-integration.com/api/v1');",
           "} else {",
-          "    pm.collectionVariables.set('base_url', 'http://localhost:3001/api/v1');",
+          "    pm.collectionVariables.set('base_url', 'http://localhost:7811/api/v1');",
           "}"
         ]
       }

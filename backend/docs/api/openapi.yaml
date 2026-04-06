@@ -40,7 +40,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:3001/api/v1
+  - url: http://localhost:7811/api/v1
     description: Development server
   - url: https://api.whatsapp-integration.com/api/v1
     description: Production server

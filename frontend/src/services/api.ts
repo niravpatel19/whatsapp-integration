@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
 // API Configuration
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001/api/v1';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:7811/api/v1';
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -172,7 +172,7 @@ export interface Message {
   messageId: string;
   sessionId: string;
   to: string;
-  type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location';
+  type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'buttons';
   content?: string;
   mediaUrl?: string;
   caption?: string;

@@ -4,11 +4,11 @@
   "description": "Frontend for WhatsApp Integration service",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 7810",
     "build": "NODE_OPTIONS=--experimental-global-webcrypto vite build",
     "build:prod": "NODE_ENV=production NODE_OPTIONS=--experimental-global-webcrypto vite build --mode production",
     "preview": "vite preview",
-    "start": "vite preview --host 0.0.0.0 --port 3000",
+    "start": "vite preview --host 0.0.0.0 --port 7810",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",

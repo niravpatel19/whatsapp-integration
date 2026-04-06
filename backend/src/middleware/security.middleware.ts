@@ -23,7 +23,7 @@ export class SecurityMiddleware {
    */
   static corsMiddleware() {
     const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
-      process.env.FRONTEND_URL || 'http://localhost:3000'
+      process.env.FRONTEND_URL || 'http://localhost:7810'
     ];
     
     return (req: Request, res: Response, next: NextFunction) => {

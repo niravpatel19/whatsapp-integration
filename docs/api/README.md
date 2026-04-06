@@ -195,6 +195,38 @@ X-API-Key: ak_1234567890abcdef1234567890abcdef1234567890abcdef
 }
 ```
 
+### Button Message (Interactive)
+```json
+{
+  "sessionId": "session-123",
+  "to": "+1234567890",
+  "type": "buttons",
+  "content": "Choose an option:",
+  "buttons": [
+    {
+      "id": "btn_1",
+      "text": "Option 1"
+    },
+    {
+      "id": "btn_2",
+      "text": "Option 2"
+    },
+    {
+      "id": "btn_3",
+      "text": "Option 3"
+    }
+  ],
+  "footer": "Optional footer text"
+}
+```
+
+**Button Message Constraints:**
+- Minimum 1 button, maximum 3 buttons
+- Button ID: max 256 characters
+- Button text: max 20 characters
+- Message content: max 1024 characters
+- Footer: max 60 characters (optional)
+
 ## 🔔 Webhook Events
 
 ### Event Types
@@ -258,7 +290,7 @@ function verifySignature(payload, signature, secret) {
 ```javascript
 import { io } from 'socket.io-client';
 
-const socket = io('http://localhost:3001', {
+const socket = io('http://localhost:7811', {
   auth: {
     token: 'YOUR_JWT_TOKEN'  // or API key
   }

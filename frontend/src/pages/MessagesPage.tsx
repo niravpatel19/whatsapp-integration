@@ -15,6 +15,8 @@ import {
   Alert,
   InputNumber,
   Divider,
+  Row,
+  Col,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -25,6 +27,8 @@ import {
   VideoCameraOutlined,
   EnvironmentOutlined,
   PhoneOutlined,
+  PlusOutlined,
+  MinusCircleOutlined,
 } from '@ant-design/icons';
 import { useSocket } from '../hooks/useSocket';
 import { messagesApi, sessionsApi, type Message, type Session } from '../services/api';
@@ -84,6 +88,8 @@ const MessagesPage: React.FC = () => {
         latitude: values.latitude,
         longitude: values.longitude,
         address: values.address,
+        buttons: values.buttons,
+        footer: values.footer,
       };
 
       const response = await sendMessage(messageData);
@@ -166,6 +172,8 @@ const MessagesPage: React.FC = () => {
         return <VideoCameraOutlined />;
       case 'location':
         return <EnvironmentOutlined />;
+      case 'buttons':
+        return <SendOutlined />;
       default:
         return null;
     }
@@ -196,6 +204,26 @@ const MessagesPage: React.FC = () => {
       render: (_: any, record: Message) => {
         if (record.type === 'text') {
           return <Text ellipsis={{ tooltip: record.content }}>{record.content}</Text>;
+        } else if (record.type === 'buttons') {
+          return (
+            <div>
+              <Text ellipsis={{ tooltip: record.content }}>{record.content}</Text>
+              {record.metadata?.buttons && (
+                <div className="mt-1">
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Buttons: {record.metadata.buttons.map((b: any) => b.text).join(', ')}
+                  </Text>
+                </div>
+              )}
+              {record.metadata?.footer && (
+                <div>
+                  <Text type="secondary" style={{ fontSize: '11px' }}>
+                    Footer: {record.metadata.footer}
+                  </Text>
+                </div>
+              )}
+            </div>
+          );
         } else if (record.mediaUrl) {
           return (
             <div>
@@ -380,10 +408,13 @@ const MessagesPage: React.FC = () => {
                       latitude: undefined,
                       longitude: undefined,
                       address: undefined,
+                      buttons: undefined,
+                      footer: undefined,
                     });
                   }}
                 >
                   <Option value="text">Text</Option>
+                  <Option value="buttons">Buttons (Interactive)</Option>
                   <Option value="image">Image</Option>
                   <Option value="document">Document</Option>
                   <Option value="audio">Audio</Option>
@@ -413,6 +444,99 @@ const MessagesPage: React.FC = () => {
                           showCount
                         />
                       </Form.Item>
+                    );
+                  } else if (messageType === 'buttons') {
+                    return (
+                      <>
+                        <Form.Item
+                          name="content"
+                          label="Message Content"
+                          rules={[{ required: true, message: 'Please enter message content' }]}
+                        >
+                          <TextArea
+                            rows={3}
+                            placeholder="Enter your message here..."
+                            maxLength={1024}
+                            showCount
+                          />
+                        </Form.Item>
+                        
+                        <Form.List
+                          name="buttons"
+                          rules={[
+                            {
+                              validator: async (_, buttons) => {
+                                if (!buttons || buttons.length === 0) {
+                                  return Promise.reject(new Error('At least 1 button is required'));
+                                }
+                                if (buttons.length > 3) {
+                                  return Promise.reject(new Error('Maximum 3 buttons allowed'));
+                                }
+                              },
+                            },
+                          ]}
+                        >
+                          {(fields, { add, remove }, { errors }) => (
+                            <>
+                              <div className="mb-2">
+                                <Text strong>Buttons (1-3)</Text>
+                              </div>
+                              {fields.map((field, index) => (
+                                <Row key={field.key} gutter={8} align="middle">
+                                  <Col span={10}>
+                                    <Form.Item
+                                      {...field}
+                                      name={[field.name, 'id']}
+                                      rules={[{ required: true, message: 'Button ID required' }]}
+                                      style={{ marginBottom: 8 }}
+                                    >
+                                      <Input placeholder={`button_${index + 1}`} maxLength={256} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      {...field}
+                                      name={[field.name, 'text']}
+                                      rules={[
+                                        { required: true, message: 'Button text required' },
+                                        { max: 20, message: 'Max 20 characters' },
+                                      ]}
+                                      style={{ marginBottom: 8 }}
+                                    >
+                                      <Input placeholder="Button Text" maxLength={20} />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={2}>
+                                    {fields.length > 1 && (
+                                      <MinusCircleOutlined
+                                        onClick={() => remove(field.name)}
+                                        style={{ color: 'red' }}
+                                      />
+                                    )}
+                                  </Col>
+                                </Row>
+                              ))}
+                              {fields.length < 3 && (
+                                <Form.Item>
+                                  <Button
+                                    type="dashed"
+                                    onClick={() => add()}
+                                    block
+                                    icon={<PlusOutlined />}
+                                  >
+                                    Add Button
+                                  </Button>
+                                </Form.Item>
+                              )}
+                              <Form.ErrorList errors={errors} />
+                            </>
+                          )}
+                        </Form.List>
+
+                        <Form.Item name="footer" label="Footer (Optional)">
+                          <Input placeholder="Optional footer text" maxLength={60} showCount />
+                        </Form.Item>
+                      </>
                     );
                   } else if (['image', 'document', 'audio', 'video'].includes(messageType)) {
                     return (

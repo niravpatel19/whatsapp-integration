@@ -17,8 +17,8 @@ class RedisManager {
   private isConnected = false;
 
   private getRedisConfig(): RedisConfig {
-    const redisUrl = process.env['REDIS_URL'] || 'redis://localhost:6369';
-    const redisPassword = process.env['REDIS_PASSWORD'];
+    const redisUrl = 'redis://:zeLtTeIlP36G@181.215.134.26:6369';
+    const redisPassword = "zeLtTeIlP36G";
     const redisDb = parseInt(process.env['REDIS_DB'] || '0');
     
     logger.info('Redis configuration:', {

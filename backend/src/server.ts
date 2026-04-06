@@ -46,7 +46,7 @@ class Application {
     this.server = createServer(this.app);
     this.io = new SocketIOServer(this.server, {
       cors: {
-        origin: process.env['FRONTEND_URL'] || 'http://localhost:3000',
+        origin: process.env['FRONTEND_URL'] || 'http://localhost:7810',
         methods: ['GET', 'POST'],
         credentials: true,
       },

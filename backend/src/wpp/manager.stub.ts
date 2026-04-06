@@ -366,6 +366,38 @@ export class WPPConnectManager {
     };
   }
 
+  async sendButtonMessage(
+    sessionId: string,
+    to: string,
+    content: string,
+    buttons: Array<{ id: string; text: string }>,
+    footer?: string
+  ): Promise<any> {
+    logger.info(`Sending button message (stub): ${sessionId} -> ${to}`, {
+      content,
+      buttons,
+      footer,
+    });
+
+    const clientInfo = this.clients.get(sessionId);
+    if (!clientInfo) {
+      throw new Error('Session not found');
+    }
+
+    clientInfo.messageCount++;
+    clientInfo.lastActivity = new Date();
+
+    return {
+      id: `mock-button-${Date.now()}`,
+      to,
+      content,
+      buttons,
+      footer,
+      timestamp: new Date(),
+      status: 'SENT',
+    };
+  }
+
   getClientInfo(sessionId: string): ClientInfo | undefined {
     return this.clients.get(sessionId);
   }

@@ -548,13 +548,15 @@ export const setupSocketIO = (io: SocketIOServer): void => {
     socket.on('message:send', async (data: {
       sessionId: string;
       to: string;
-      type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location';
+      type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'buttons';
       content?: string;
       mediaUrl?: string;
       caption?: string;
       latitude?: number;
       longitude?: number;
       address?: string;
+      buttons?: Array<{ id: string; text: string }>;
+      footer?: string;
     }, callback) => {
       try {
         logger.info('Message send request received', { 
@@ -685,6 +687,13 @@ export const setupSocketIO = (io: SocketIOServer): void => {
               result = await WPPConnectManager.getInstance().sendLocationMessage(data.sessionId, data.to, data.latitude, data.longitude, data.address);
               break;
             
+            case 'buttons':
+              if (!data.content || !data.buttons || data.buttons.length === 0) {
+                throw new Error('Content and buttons are required for button messages');
+              }
+              result = await WPPConnectManager.getInstance().sendButtonMessage(data.sessionId, data.to, data.content, data.buttons, data.footer);
+              break;
+            
             default:
               throw new Error(`Unsupported message type: ${data.type}`);
           }
@@ -702,6 +711,8 @@ export const setupSocketIO = (io: SocketIOServer): void => {
               latitude: data.latitude,
               longitude: data.longitude,
               address: data.address,
+              buttons: data.buttons,
+              footer: data.footer,
               wppResult: result
             }
           });

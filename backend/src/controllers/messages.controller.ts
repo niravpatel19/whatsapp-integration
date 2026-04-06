@@ -14,7 +14,7 @@ const sendMessageSchema = z
   .object({
     sessionId: z.string().min(1, 'Session ID is required'),
     to: CommonSchemas.phone,
-    type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location']),
+    type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location', 'buttons']),
     content: z.string().optional(),
     mediaUrl: z.string().refine((url) => {
       if (!url) return true; // Optional field
@@ -29,6 +29,11 @@ const sendMessageSchema = z
     latitude: z.number().min(-90).max(90).optional(),
     longitude: z.number().min(-180).max(180).optional(),
     address: z.string().max(200, 'Address too long').optional(),
+    buttons: z.array(z.object({
+      id: z.string().min(1).max(256),
+      text: z.string().min(1).max(20)
+    })).min(1).max(3).optional(),
+    footer: z.string().max(60).optional(),
   })
   .refine(
     (data) => {
@@ -39,6 +44,9 @@ const sendMessageSchema = z
         return false;
       }
       if (data.type === 'location' && (!data.latitude || !data.longitude)) {
+        return false;
+      }
+      if (data.type === 'buttons' && (!data.content || !data.buttons || data.buttons.length === 0)) {
         return false;
       }
       return true;
@@ -54,7 +62,7 @@ const bulkSendSchema = z.object({
     .array(
       z.object({
         to: CommonSchemas.phone,
-        type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location']),
+        type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location', 'buttons']),
         content: z.string().optional(),
         mediaUrl: z.string().refine((url) => {
           if (!url) return true; // Optional field
@@ -69,6 +77,11 @@ const bulkSendSchema = z.object({
         latitude: z.number().min(-90).max(90).optional(),
         longitude: z.number().min(-180).max(180).optional(),
         address: z.string().max(200, 'Address too long').optional(),
+        buttons: z.array(z.object({
+          id: z.string().min(1).max(256),
+          text: z.string().min(1).max(20)
+        })).min(1).max(3).optional(),
+        footer: z.string().max(60).optional(),
       })
     )
     .min(1, 'At least one message is required')
@@ -78,7 +91,7 @@ const bulkSendSchema = z.object({
 const messageFiltersSchema = z.object({
   sessionId: z.string().optional(),
   to: z.string().optional(),
-  type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location']).optional(),
+  type: z.enum(['text', 'image', 'document', 'audio', 'video', 'location', 'buttons']).optional(),
   status: z.enum(['QUEUED', 'SENT', 'DELIVERED', 'READ', 'FAILED']).optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(20),
@@ -232,6 +245,8 @@ export class MessagesController {
           latitude: messageData.latitude,
           longitude: messageData.longitude,
           address: messageData.address,
+          buttons: messageData.buttons,
+          footer: messageData.footer,
         },
         idempotencyKey,
       });
@@ -292,6 +307,16 @@ export class MessagesController {
               messageData.latitude!,
               messageData.longitude!,
               messageData.address
+            );
+            break;
+
+          case 'buttons':
+            wppResult = await wppManager.sendButtonMessage(
+              messageData.sessionId,
+              messageData.to,
+              messageData.content!,
+              messageData.buttons as Array<{ id: string; text: string }>,
+              messageData.footer
             );
             break;
 

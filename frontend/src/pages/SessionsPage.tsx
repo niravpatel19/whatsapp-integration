@@ -183,7 +183,7 @@ const SessionsPage: React.FC = () => {
       return;
     }
 
-    const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:3001';
+    const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:7811';
     let directSocket: any = null;
     let notificationShown = new Set<string>(); // Track shown notifications
 

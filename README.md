@@ -16,7 +16,8 @@ A comprehensive, production-ready WhatsApp integration service that enables user
 
 - **Multi-tenant WhatsApp Session Management** - Create and manage isolated WhatsApp sessions
 - **Real-time QR Code Generation** - Automatic QR code generation and device pairing
-- **Message Sending** - Support for text, images, documents, audio, video, and location messages
+- **Message Sending** - Support for text, images, documents, audio, video, location, and interactive button messages
+- **Interactive Button Messages** - Send messages with up to 3 clickable buttons for user interaction
 - **Webhook Notifications** - Real-time event notifications with HMAC signatures
 - **Socket.IO Real-time Updates** - Live updates for QR codes, session status, and message delivery
 - **Two-Factor Authentication** - TOTP-based 2FA for enhanced security
@@ -78,9 +79,9 @@ docker-compose up -d
 
 4. Access the application:
 
-- Admin UI: http://localhost:3000
-- API: http://localhost:3001
-- API Documentation: http://localhost:3001/api/docs
+- Admin UI: http://localhost:7810
+- API: http://localhost:7811
+- API Documentation: http://localhost:7811/api/docs
 
 ### Manual Installation
 
@@ -131,7 +132,7 @@ WEBHOOK_SIGNING_SECRET=your-webhook-signing-secret
 WPP_USE_REAL_WHATSAPP=false  # Set to true for production
 
 # Frontend URL (for CORS)
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:7810
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000  # 15 minutes
@@ -145,8 +146,8 @@ LOG_LEVEL=info
 
 ```bash
 # API Configuration
-VITE_API_BASE_URL=http://localhost:3001/api/v1
-VITE_SOCKET_URL=http://localhost:3001
+VITE_API_BASE_URL=http://localhost:7811/api/v1
+VITE_SOCKET_URL=http://localhost:7811
 
 # App Configuration
 VITE_APP_NAME=WhatsApp Integration
@@ -157,14 +158,14 @@ VITE_APP_VERSION=1.0.0
 
 ### Interactive Documentation
 
-- **Swagger UI**: http://localhost:3001/api/docs
+- **Swagger UI**: http://localhost:7811/api/docs
 - **OpenAPI Spec**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
 
 ### Base URL
 
 ```
 Production: https://api.whatsapp-integration.com/api/v1
-Development: http://localhost:3001/api/v1
+Development: http://localhost:7811/api/v1
 ```
 
 ### Rate Limits
@@ -184,7 +185,7 @@ The API supports two authentication methods:
 
 ```bash
 # Login to get token
-curl -X POST http://localhost:3001/api/v1/auth/login \
+curl -X POST http://localhost:7811/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
@@ -192,7 +193,7 @@ curl -X POST http://localhost:3001/api/v1/auth/login \
   }'
 
 # Use token in subsequent requests
-curl -X GET http://localhost:3001/api/v1/sessions \
+curl -X GET http://localhost:7811/api/v1/sessions \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -200,7 +201,7 @@ curl -X GET http://localhost:3001/api/v1/sessions \
 
 ```bash
 # Create API key (requires JWT authentication)
-curl -X POST http://localhost:3001/api/v1/api-keys \
+curl -X POST http://localhost:7811/api/v1/api-keys \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -208,7 +209,7 @@ curl -X POST http://localhost:3001/api/v1/api-keys \
   }'
 
 # Use API key in requests
-curl -X GET http://localhost:3001/api/v1/sessions \
+curl -X GET http://localhost:7811/api/v1/sessions \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
@@ -217,7 +218,7 @@ curl -X GET http://localhost:3001/api/v1/sessions \
 ### Creating a WhatsApp Session
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/sessions \
+curl -X POST http://localhost:7811/api/v1/sessions \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -228,14 +229,14 @@ curl -X POST http://localhost:3001/api/v1/sessions \
 ### Getting QR Code for Device Pairing
 
 ```bash
-curl -X GET http://localhost:3001/api/v1/sessions/SESSION_ID/qr \
+curl -X GET http://localhost:7811/api/v1/sessions/SESSION_ID/qr \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
 ### Sending a Text Message
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/messages/send \
+curl -X POST http://localhost:7811/api/v1/messages/send \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -249,7 +250,7 @@ curl -X POST http://localhost:3001/api/v1/messages/send \
 ### Sending an Image Message
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/messages/send \
+curl -X POST http://localhost:7811/api/v1/messages/send \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -264,7 +265,7 @@ curl -X POST http://localhost:3001/api/v1/messages/send \
 ### Sending a Location Message
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/messages/send \
+curl -X POST http://localhost:7811/api/v1/messages/send \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -277,6 +278,27 @@ curl -X POST http://localhost:3001/api/v1/messages/send \
   }'
 ```
 
+### Sending a Button Message (Interactive)
+
+```bash
+curl -X POST http://localhost:7811/api/v1/messages/send \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "your-session-id",
+    "to": "+1234567890",
+    "type": "buttons",
+    "content": "Would you like to confirm your appointment?",
+    "buttons": [
+      {"id": "confirm_yes", "text": "Yes, Confirm"},
+      {"id": "confirm_no", "text": "No, Cancel"}
+    ],
+    "footer": "Reply within 24 hours"
+  }'
+```
+
+For detailed button message documentation, see [docs/api/BUTTON_MESSAGES.md](docs/api/BUTTON_MESSAGES.md).
+
 ## 🔗 Webhooks
 
 Webhooks allow you to receive real-time notifications about WhatsApp events.
@@ -284,7 +306,7 @@ Webhooks allow you to receive real-time notifications about WhatsApp events.
 ### Creating a Webhook
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/webhooks \
+curl -X POST http://localhost:7811/api/v1/webhooks \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -382,7 +404,7 @@ Real-time updates are available via Socket.IO connection.
 ```javascript
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:3001", {
+const socket = io("http://localhost:7811", {
   auth: {
     token: "YOUR_JWT_TOKEN", // or use API key
   },
@@ -647,10 +669,10 @@ For the complete checklist, see [docs/deployment/PRODUCTION_CHECKLIST.md](docs/d
 
 ```bash
 # Liveness probe
-curl http://localhost:3001/health
+curl http://localhost:7811/health
 
 # Readiness probe
-curl http://localhost:3001/ready
+curl http://localhost:7811/ready
 ```
 
 ### Metrics

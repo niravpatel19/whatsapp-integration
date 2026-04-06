@@ -112,7 +112,7 @@ ERROR → ERROR = ❌ No email (suppressed)
 ### **Example: Send Test Notification**
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/notifications/test \
+curl -X POST http://localhost:7811/api/v1/notifications/test \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -124,7 +124,7 @@ curl -X POST http://localhost:3001/api/v1/notifications/test \
 ### **Example: Update Notification Settings**
 
 ```bash
-curl -X PUT http://localhost:3001/api/v1/notifications/settings \
+curl -X PUT http://localhost:7811/api/v1/notifications/settings \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -189,24 +189,24 @@ curl -X PUT http://localhost:3001/api/v1/notifications/settings \
 
 ```bash
 # Test SMTP connection
-curl -X GET http://localhost:3001/health/email
+curl -X GET http://localhost:7811/health/email
 ```
 
 ### **Send Test Notifications**
 
 ```bash
 # Test disconnection email
-curl -X POST http://localhost:3001/api/v1/notifications/test \
+curl -X POST http://localhost:7811/api/v1/notifications/test \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"sessionId": "test-session", "type": "SESSION_DISCONNECTED"}'
 
 # Test reconnection email
-curl -X POST http://localhost:3001/api/v1/notifications/test \
+curl -X POST http://localhost:7811/api/v1/notifications/test \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"sessionId": "test-session", "type": "SESSION_RECONNECTED"}'
 
 # Test error email
-curl -X POST http://localhost:3001/api/v1/notifications/test \
+curl -X POST http://localhost:7811/api/v1/notifications/test \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"sessionId": "test-session", "type": "SESSION_ERROR"}'
 ```
@@ -250,13 +250,13 @@ curl -X POST http://localhost:3001/api/v1/notifications/test \
 
 ```bash
 # Check notification queue
-curl -X GET http://localhost:3001/api/v1/notifications?status=PENDING
+curl -X GET http://localhost:7811/api/v1/notifications?status=PENDING
 
 # Check user settings
-curl -X GET http://localhost:3001/api/v1/notifications/settings
+curl -X GET http://localhost:7811/api/v1/notifications/settings
 
 # Force process notifications
-curl -X POST http://localhost:3001/api/v1/admin/notifications/process
+curl -X POST http://localhost:7811/api/v1/admin/notifications/process
 ```
 
 ## 🎯 Best Practices

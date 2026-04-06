@@ -258,7 +258,7 @@ function verifySignature(payload, signature, secret) {
 ```javascript
 import { io } from 'socket.io-client';
 
-const socket = io('http://localhost:3001', {
+const socket = io('http://localhost:7811', {
   auth: {
     token: 'YOUR_JWT_TOKEN'  // or API key
   }

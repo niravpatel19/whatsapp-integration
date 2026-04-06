@@ -47,7 +47,7 @@ const DashboardPage: React.FC = () => {
 
   // Build documentation links based on API base URL
   const API_BASE_URL =
-    (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001/api/v1';
+    (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:7811/api/v1';
   const SERVER_BASE_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
   const docsLinks = {
     swagger: `${SERVER_BASE_URL}/api/docs`,

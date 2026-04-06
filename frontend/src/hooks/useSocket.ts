@@ -36,13 +36,15 @@ interface UseSocketReturn {
   sendMessage: (data: {
     sessionId: string;
     to: string;
-    type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location';
+    type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'buttons';
     content?: string;
     mediaUrl?: string;
     caption?: string;
     latitude?: number;
     longitude?: number;
     address?: string;
+    buttons?: Array<{ id: string; text: string }>;
+    footer?: string;
   }) => Promise<SocketResponse>;
   // Event subscriptions
   onQRUpdate: (callback: (data: QRUpdatePayload) => void) => () => void;
@@ -71,7 +73,7 @@ export const useSocket = (): UseSocketReturn => {
     }
 
     // Create socket connection
-    const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:3001';
+    const socketUrl = (import.meta as any).env?.VITE_SOCKET_URL || 'http://localhost:7811';
     const newSocket = io(socketUrl, {
       auth: {
         token,
@@ -226,13 +228,15 @@ export const useSocket = (): UseSocketReturn => {
     (data: {
       sessionId: string;
       to: string;
-      type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location';
+      type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'buttons';
       content?: string;
       mediaUrl?: string;
       caption?: string;
       latitude?: number;
       longitude?: number;
       address?: string;
+      buttons?: Array<{ id: string; text: string }>;
+      footer?: string;
     }): Promise<SocketResponse> => {
       return new Promise((resolve, reject) => {
         if (!socket || connectionStatus !== 'connected') {

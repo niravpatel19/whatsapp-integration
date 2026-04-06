@@ -55,7 +55,8 @@ export enum MessageType {
   AUDIO = 'audio',
   VIDEO = 'video',
   STICKER = 'sticker',
-  LOCATION = 'location'
+  LOCATION = 'location',
+  BUTTONS = 'buttons'
 }
 
 export enum MessageStatus {

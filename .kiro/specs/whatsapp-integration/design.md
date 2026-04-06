@@ -1082,8 +1082,8 @@ services:
     ports:
       - "3000:80"
     environment:
-      - VITE_API_BASE_URL=http://localhost:3001/api/v1
-      - VITE_SOCKET_URL=http://localhost:3001
+      - VITE_API_BASE_URL=http://localhost:7811/api/v1
+      - VITE_SOCKET_URL=http://localhost:7811
 
   backend:
     build: ./backend

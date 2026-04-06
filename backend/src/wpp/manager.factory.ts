@@ -25,6 +25,13 @@ export interface IWPPConnectManager {
     longitude: number,
     address?: string
   ): Promise<any>;
+  sendButtonMessage(
+    sessionId: string,
+    to: string,
+    content: string,
+    buttons: Array<{ id: string; text: string }>,
+    footer?: string
+  ): Promise<any>;
   refreshQR(sessionId: string): Promise<void>;
   getClientInfo(sessionId: string): any;
   reconnectClient(sessionId: string): Promise<void>;

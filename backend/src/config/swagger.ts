@@ -190,12 +190,12 @@ export const setupSwagger = (app: Application): void => {
             if (item.request && item.request.url) {
               if (typeof item.request.url === 'string') {
                 item.request.url = item.request.url.replace(
-                  'http://localhost:3001',
+                  'http://localhost:7811',
                   'http://82.29.198.95:7811'
                 );
               } else if (item.request.url.raw) {
                 item.request.url.raw = item.request.url.raw.replace(
-                  'http://localhost:3001',
+                  'http://localhost:7811',
                   'http://82.29.198.95:7811'
                 );
               }

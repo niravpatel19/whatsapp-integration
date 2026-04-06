@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { logger } from '../utils/logger';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = 'http://localhost:7811/api/v1';
 let authToken = '';
 
 interface TestSession {
